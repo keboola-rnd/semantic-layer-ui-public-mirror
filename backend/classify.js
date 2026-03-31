@@ -4,7 +4,7 @@
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 
-async function callClaude(prompt, maxTokens = 4096) {
+async function callClaude(prompt, maxTokens = 16000) {
   const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — add it as a data app secret");
 
@@ -104,7 +104,7 @@ Also suggest metrics (SQL aggregations), relationships (JOINs), and glossary ter
 IMPORTANT: Respond with ONLY valid JSON, no markdown, no explanation:
 {"datasets":[{"tableId":"...","name":"...","description":"...","grain":"...","primaryKey":[],"fields":[{"name":"...","role":"...","type":"...","description":"..."}],"ai":{"keywords":[]}}],"metrics":[{"name":"...","sql":"...","dataset":"...","description":"..."}],"relationships":[{"name":"...","from":"...","to":"...","on":"...","type":"left"}],"glossary":[{"term":"...","definition":"...","seeAlso":[]}]}`;
 
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 8;
 
 export async function classifyTables(tables, projectContext = {}) {
   const tableSchemas = Object.entries(tables).map(([tableId, t]) => ({
