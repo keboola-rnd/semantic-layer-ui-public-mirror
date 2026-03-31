@@ -1,77 +1,63 @@
 /**
- * AI-assisted classification of table schemas using Claude.
- * Classifies fields, suggests metrics, relationships, and glossary terms.
- * Handles large table counts by batching.
+ * AI-assisted classification using Claude via direct HTTP (no SDK).
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 
-const getClient = () => {
+async function callClaude(prompt, maxTokens = 8192) {
   const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
-  return new Anthropic({ apiKey });
-};
 
-const CLASSIFICATION_PROMPT = `You are a data analyst building a semantic layer for a Keboola data warehouse.
-
-Given the following table schemas, produce a semantic layer in JSON.
-
-For each table, classify every column:
-- role: "key" (primary/foreign keys, columns ending in _id), "dimension" (categorical/descriptive), "measure" (numeric values for aggregation), "timestamp" (dates/times)
-- type: "string", "integer", "decimal", "boolean", "date", "datetime", "json"
-
-Also generate:
-- metrics: SQL aggregation expressions for measure columns (Snowflake syntax, double-quoted column names)
-- relationships: JOIN conditions between tables based on matching column names
-- glossary: Business term definitions for important concepts
-
-Respond with ONLY valid JSON (no markdown fences, no explanation):
-{"datasets":[...],"metrics":[...],"relationships":[...],"glossary":[...]}`;
-
-const BATCH_SIZE = 25; // tables per Claude call
-
-/** Stream a Claude request and collect the full text response */
-async function streamMessage(client, params) {
-  let text = "";
-  const stream = await client.messages.stream(params);
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-      text += event.delta.text;
-    }
-  }
-  return text;
-}
-
-async function classifyBatch(client, tableSchemas, projectContext) {
-  const userMessage = `Project: ${projectContext.projectName || "Unknown"}
-SQL Dialect: ${projectContext.sqlDialect || "Snowflake"}
-
-Tables (${tableSchemas.length}):
-${JSON.stringify(tableSchemas, null, 2)}`;
-
-  const text = await streamMessage(client, {
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 16000,
-    messages: [
-      { role: "user", content: CLASSIFICATION_PROMPT + "\n\n" + userMessage },
-    ],
+  const resp = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    }),
   });
 
-  // Extract JSON — handle markdown fences or raw JSON
-  let jsonStr = text.trim();
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1].trim();
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Anthropic API ${resp.status}: ${err.substring(0, 200)}`);
+  }
 
-  // Find the JSON object boundaries
-  const firstBrace = jsonStr.indexOf("{");
-  if (firstBrace > 0) jsonStr = jsonStr.substring(firstBrace);
-
-  return JSON.parse(jsonStr);
+  const body = await resp.json();
+  return body.content?.[0]?.text || "";
 }
 
-export async function classifyTables(tables, projectContext = {}) {
-  const client = getClient();
+function parseJSON(text) {
+  let s = text.trim();
+  // Strip markdown fences
+  const match = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (match) s = match[1].trim();
+  // Find first { or [
+  const braceIdx = s.indexOf("{");
+  const bracketIdx = s.indexOf("[");
+  const start = braceIdx >= 0 && (bracketIdx < 0 || braceIdx < bracketIdx) ? braceIdx : bracketIdx;
+  if (start > 0) s = s.substring(start);
+  return JSON.parse(s);
+}
 
+const CLASSIFY_PROMPT = `You are classifying columns in a data warehouse for a semantic layer.
+
+For each table, classify every column:
+- role: "key" (PKs, FKs, columns ending _id), "dimension" (categorical), "measure" (numeric for aggregation), "timestamp" (dates)
+- type: "string", "integer", "decimal", "boolean", "date", "datetime", "json"
+
+Also suggest metrics (SQL aggregations), relationships (JOINs), and glossary terms.
+
+IMPORTANT: Respond with ONLY valid JSON, no markdown, no explanation:
+{"datasets":[{"tableId":"...","name":"...","description":"...","grain":"...","primaryKey":[],"fields":[{"name":"...","role":"...","type":"...","description":"..."}],"ai":{"keywords":[]}}],"metrics":[{"name":"...","sql":"...","dataset":"...","description":"..."}],"relationships":[{"name":"...","from":"...","to":"...","on":"...","type":"left"}],"glossary":[{"term":"...","definition":"...","seeAlso":[]}]}`;
+
+const BATCH_SIZE = 15;
+
+export async function classifyTables(tables, projectContext = {}) {
   const tableSchemas = Object.entries(tables).map(([tableId, t]) => ({
     tableId,
     name: t.name,
@@ -84,15 +70,12 @@ export async function classifyTables(tables, projectContext = {}) {
     })),
   }));
 
-  // Batch tables to avoid output truncation
   const batches = [];
   for (let i = 0; i < tableSchemas.length; i += BATCH_SIZE) {
     batches.push(tableSchemas.slice(i, i + BATCH_SIZE));
   }
 
-  console.log(
-    `[classify] Classifying ${tableSchemas.length} tables in ${batches.length} batch(es) of up to ${BATCH_SIZE}...`
-  );
+  console.log(`[classify] ${tableSchemas.length} tables in ${batches.length} batch(es)`);
 
   const merged = { datasets: [], metrics: [], relationships: [], glossary: [] };
 
@@ -101,105 +84,43 @@ export async function classifyTables(tables, projectContext = {}) {
     console.log(`[classify]   Batch ${i + 1}/${batches.length} (${batch.length} tables)...`);
 
     try {
-      const result = await classifyBatch(client, batch, projectContext);
+      const prompt = `${CLASSIFY_PROMPT}
+
+Project: ${projectContext.projectName || "Unknown"}, SQL: ${projectContext.sqlDialect || "Snowflake"}
+
+Tables:
+${JSON.stringify(batch)}`;
+
+      const text = await callClaude(prompt);
+      const result = parseJSON(text);
+
       if (result.datasets) merged.datasets.push(...result.datasets);
       if (result.metrics) merged.metrics.push(...result.metrics);
       if (result.relationships) merged.relationships.push(...result.relationships);
       if (result.glossary) merged.glossary.push(...result.glossary);
+
+      console.log(`[classify]   Batch ${i + 1} OK: ${result.datasets?.length || 0} datasets`);
     } catch (err) {
       console.error(`[classify]   Batch ${i + 1} failed:`, err.message);
-      // Continue with other batches
     }
   }
 
-  // If multiple batches, do a follow-up call to find cross-batch relationships
-  if (batches.length > 1) {
-    console.log(`[classify] Finding cross-batch relationships...`);
-    try {
-      const allTableIds = tableSchemas.map((t) => ({
-        tableId: t.tableId,
-        name: t.name,
-        columns: t.columns.map((c) => c.name),
-      }));
-
-      const crossText = await streamMessage(client, {
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8000,
-        messages: [
-          {
-            role: "user",
-            content: `Given these tables, suggest JOIN relationships between them based on matching column names. Respond with ONLY a JSON array of relationships:
-[{"name":"from_to_to","from":"from.table.id","to":"to.table.id","on":"from.\\"col\\" = to.\\"col\\"","type":"left"}]
-
-Tables: ${JSON.stringify(allTableIds)}`,
-          },
-        ],
-      });
-      let crossJson = crossText.trim();
-      const crossMatch = crossText.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (crossMatch) crossJson = crossMatch[1].trim();
-      const firstBracket = crossJson.indexOf("[");
-      if (firstBracket > 0) crossJson = crossJson.substring(firstBracket);
-
-      const crossRels = JSON.parse(crossJson);
-      // Add only relationships not already found
-      const existingKeys = new Set(
-        merged.relationships.map((r) => `${r.from}|${r.to}`)
-      );
-      for (const r of crossRels) {
-        if (!existingKeys.has(`${r.from}|${r.to}`)) {
-          merged.relationships.push(r);
-        }
-      }
-    } catch (err) {
-      console.error(`[classify] Cross-batch relationship detection failed:`, err.message);
-    }
-  }
-
-  console.log(
-    `[classify] Total: ${merged.datasets.length} datasets, ${merged.metrics.length} metrics, ${merged.relationships.length} relationships, ${merged.glossary.length} glossary`
-  );
-
+  console.log(`[classify] Total: ${merged.datasets.length} ds, ${merged.metrics.length} met, ${merged.relationships.length} rel, ${merged.glossary.length} gl`);
   return merged;
 }
 
-const FILE_ENRICHMENT_PROMPT = `You are enriching a semantic layer with information from uploaded documentation.
+export async function enrichFromFile(fileContent, fileName, modelContext) {
+  console.log(`[enrich] Processing: ${fileName} (${fileContent.length} chars)`);
 
-Current semantic layer state:
-{MODEL_CONTEXT}
+  const prompt = `You are enriching a semantic layer from a document. Current state:
+${JSON.stringify(modelContext, null, 2)}
 
-Document content:
-{DOCUMENT_CONTENT}
+Document (${fileName}):
+${fileContent.substring(0, 50000)}
 
-Extract and suggest additions. Respond with ONLY valid JSON (no markdown fences):
+Suggest additions. Respond with ONLY valid JSON:
 {"suggestedMetrics":[],"suggestedGlossary":[],"fieldUpdates":[],"suggestedRelationships":[]}`;
 
-export async function enrichFromFile(fileContent, fileName, modelContext) {
-  const client = getClient();
-
-  const prompt = FILE_ENRICHMENT_PROMPT.replace(
-    "{MODEL_CONTEXT}",
-    JSON.stringify(modelContext, null, 2)
-  ).replace("{DOCUMENT_CONTENT}", fileContent);
-
-  console.log(`[enrich] Processing file: ${fileName} (${fileContent.length} chars)`);
-
-  const text = await streamMessage(client, {
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 8000,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  let jsonStr = text.trim();
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1].trim();
-  const firstBrace = jsonStr.indexOf("{");
-  if (firstBrace > 0) jsonStr = jsonStr.substring(firstBrace);
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch (err) {
-    console.error("[enrich] Failed to parse response:", err.message);
-    throw new Error("Failed to parse AI enrichment response");
-  }
+  const text = await callClaude(prompt);
+  return parseJSON(text);
 }
