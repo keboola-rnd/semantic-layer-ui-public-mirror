@@ -2,14 +2,23 @@ import express from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import multer from "multer";
-import { introspectProject, fetchTableDetails } from "./backend/introspect.js";
-import { classifyTables, enrichFromFile } from "./backend/classify.js";
+let multer, introspectProject, fetchTableDetails, classifyTables, enrichFromFile;
+try {
+  multer = (await import("multer")).default;
+  ({ introspectProject, fetchTableDetails } = await import("./backend/introspect.js"));
+  ({ classifyTables, enrichFromFile } = await import("./backend/classify.js"));
+  console.log("[init] Backend modules loaded successfully");
+} catch (err) {
+  console.error("[init] Failed to load backend modules:", err.message);
+  console.error("[init] AI features will be unavailable");
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer
+  ? multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+  : null;
 
 app.use(express.json({ limit: "10mb" }));
 
@@ -78,7 +87,7 @@ app.post("/backend/classify", async (req, res) => {
 
 // ─── Backend: File Upload & Enrichment ───────────────────────────────────────
 
-app.post("/backend/upload", upload.single("file"), async (req, res) => {
+app.post("/backend/upload", ...(upload ? [upload.single("file")] : []), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
