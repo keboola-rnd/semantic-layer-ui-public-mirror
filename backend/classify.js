@@ -30,6 +30,18 @@ Respond with ONLY valid JSON (no markdown fences, no explanation):
 
 const BATCH_SIZE = 25; // tables per Claude call
 
+/** Stream a Claude request and collect the full text response */
+async function streamMessage(client, params) {
+  let text = "";
+  const stream = await client.messages.stream(params);
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+      text += event.delta.text;
+    }
+  }
+  return text;
+}
+
 async function classifyBatch(client, tableSchemas, projectContext) {
   const userMessage = `Project: ${projectContext.projectName || "Unknown"}
 SQL Dialect: ${projectContext.sqlDialect || "Snowflake"}
@@ -37,15 +49,13 @@ SQL Dialect: ${projectContext.sqlDialect || "Snowflake"}
 Tables (${tableSchemas.length}):
 ${JSON.stringify(tableSchemas, null, 2)}`;
 
-  const response = await client.messages.create({
+  const text = await streamMessage(client, {
     model: "claude-sonnet-4-20250514",
-    max_tokens: 64000,
+    max_tokens: 16000,
     messages: [
       { role: "user", content: CLASSIFICATION_PROMPT + "\n\n" + userMessage },
     ],
   });
-
-  const text = response.content[0]?.text || "";
 
   // Extract JSON — handle markdown fences or raw JSON
   let jsonStr = text.trim();
@@ -112,7 +122,7 @@ export async function classifyTables(tables, projectContext = {}) {
         columns: t.columns.map((c) => c.name),
       }));
 
-      const crossResponse = await client.messages.create({
+      const crossText = await streamMessage(client, {
         model: "claude-sonnet-4-20250514",
         max_tokens: 8000,
         messages: [
@@ -125,8 +135,6 @@ Tables: ${JSON.stringify(allTableIds)}`,
           },
         ],
       });
-
-      const crossText = crossResponse.content[0]?.text || "";
       let crossJson = crossText.trim();
       const crossMatch = crossText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (crossMatch) crossJson = crossMatch[1].trim();
@@ -176,13 +184,12 @@ export async function enrichFromFile(fileContent, fileName, modelContext) {
 
   console.log(`[enrich] Processing file: ${fileName} (${fileContent.length} chars)`);
 
-  const response = await client.messages.create({
+  const text = await streamMessage(client, {
     model: "claude-sonnet-4-20250514",
     max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const text = response.content[0]?.text || "";
   let jsonStr = text.trim();
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) jsonStr = jsonMatch[1].trim();
