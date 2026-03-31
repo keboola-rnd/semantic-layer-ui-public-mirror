@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, ChevronDown, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROLE_COLORS, TYPE_COLORS } from "@/lib/constants";
@@ -31,32 +31,48 @@ export function StepDatasets({
   onBack: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [datasets, setDatasets] = useState<SemanticDataset[]>(classifyResult?.datasets || []);
+  const hasStarted = useRef(false);
+
+  // Auto-classify once on mount if no result yet
+  useEffect(() => {
+    if (!classifyResult && !hasStarted.current && tableIds.length > 0) {
+      hasStarted.current = true;
+      handleClassify();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleClassify() {
     setLoading(true);
     setError("");
     try {
-      // First fetch table details
+      // Step 1: Fetch table details
+      setStatus(`Fetching details for ${tableIds.length} tables...`);
       const detailResp = await fetch("/backend/introspect/tables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tableIds, storageUrl }),
       });
-      if (!detailResp.ok) throw new Error("Failed to fetch table details");
+      if (!detailResp.ok) {
+        const text = await detailResp.text();
+        throw new Error(text.startsWith("<") ? `Server error (${detailResp.status}). Check data app logs.` : text);
+      }
       const tables = await detailResp.json();
+      const tableCount = Object.keys(tables).length;
 
-      // Then classify with AI
+      // Step 2: Classify with AI
+      setStatus(`AI is classifying ${tableCount} tables...`);
       const classifyResp = await fetch("/backend/classify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tables, projectName, sqlDialect }),
       });
       if (!classifyResp.ok) {
-        const err = await classifyResp.json();
-        throw new Error(err.error || "Classification failed");
+        const text = await classifyResp.text();
+        throw new Error(text.startsWith("<") ? `Classification timed out or failed (${classifyResp.status}). Try selecting fewer buckets.` : text);
       }
       const result = await classifyResp.json();
       setDatasets(result.datasets || []);
@@ -65,6 +81,7 @@ export function StepDatasets({
       setError(err instanceof Error ? err.message : "Classification failed");
     } finally {
       setLoading(false);
+      setStatus("");
     }
   }
 
@@ -86,18 +103,17 @@ export function StepDatasets({
     setDatasets(datasets.filter((_, i) => i !== dsIndex));
   }
 
-  // Auto-classify on mount if no result yet
-  if (!classifyResult && !loading && !error && tableIds.length > 0) {
-    handleClassify();
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Review Datasets & Fields</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            AI has classified {datasets.length} datasets. Review and edit roles and types.
+            {datasets.length > 0
+              ? `AI has classified ${datasets.length} datasets. Review and edit roles and types.`
+              : loading
+                ? "Discovering and classifying your data..."
+                : "AI will classify your tables."}
           </p>
         </div>
         {datasets.length > 0 && (
@@ -114,8 +130,8 @@ export function StepDatasets({
         <div className="flex items-center gap-3 py-12 justify-center text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           <div>
-            <div className="text-sm font-medium">AI is classifying {tableIds.length} tables...</div>
-            <div className="text-xs">This may take 15-30 seconds</div>
+            <div className="text-sm font-medium">{status}</div>
+            <div className="text-xs">This may take up to a minute for large projects</div>
           </div>
         </div>
       )}
@@ -123,7 +139,12 @@ export function StepDatasets({
       {error && (
         <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
           <p className="text-sm text-destructive">{error}</p>
-          <button onClick={handleClassify} className="text-xs underline mt-2">Retry</button>
+          <button
+            onClick={() => { hasStarted.current = false; handleClassify(); }}
+            className="text-xs underline mt-2"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -140,7 +161,6 @@ export function StepDatasets({
 
           return (
             <div key={ds.tableId} className="border border-border rounded-lg">
-              {/* Header */}
               <div
                 className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30"
                 onClick={() => toggleExpand(ds.tableId)}
@@ -175,10 +195,9 @@ export function StepDatasets({
                 </button>
               </div>
 
-              {/* Expanded fields */}
               {isExpanded && (
-                <div className="border-t border-border">
-                  <table className="w-full text-xs">
+                <div className="border-t border-border overflow-x-auto">
+                  <table className="w-full text-xs min-w-[500px]">
                     <thead>
                       <tr className="bg-muted/30">
                         <th className="text-left px-3 py-1.5 font-medium">Field</th>
