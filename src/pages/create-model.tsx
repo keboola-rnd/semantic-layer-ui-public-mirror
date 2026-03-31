@@ -92,7 +92,8 @@ export function CreateModelPage() {
       const data = await resp.json();
 
       setDatasets(data.datasets || []);
-      setMetrics((data.metrics || []).map((m: Record<string, string>) => ({ ...m, accepted: false })));
+      // Don't use heuristic metrics — too noisy. Let AI suggest metrics instead.
+      setMetrics([]);
       setRelationships((data.relationships || []).map((r: Record<string, string>) => ({ ...r, accepted: false })));
       setRawTables(data.tables || null);
       setStep(1);
@@ -178,23 +179,23 @@ export function CreateModelPage() {
             return updated;
           });
 
-          // Merge new metrics/relationships/glossary from AI
-          const newMetrics: MetricDraft[] = [];
-          const newGlossary: GlossaryDraft[] = [];
-          for (const item of job.completed) {
-            for (const m of item.metrics || []) {
-              if (!metrics.some((em) => em.name === m.name)) {
-                newMetrics.push({ ...m, accepted: false });
-              }
-            }
-            for (const g of item.glossary || []) {
-              if (!glossary.some((eg) => eg.term === g.term)) {
-                newGlossary.push({ ...g, accepted: false });
-              }
-            }
-          }
-          if (newMetrics.length) setMetrics((prev) => [...prev, ...newMetrics]);
-          if (newGlossary.length) setGlossary((prev) => [...prev, ...newGlossary]);
+          // Merge new metrics/relationships/glossary from AI (deduplicated)
+          setMetrics((prev) => {
+            const names = new Set(prev.map((m) => m.name));
+            const newOnes = job.completed
+              .flatMap((item: Record<string, unknown[]>) => (item.metrics || []) as MetricDraft[])
+              .filter((m: MetricDraft) => !names.has(m.name))
+              .map((m: MetricDraft) => ({ ...m, accepted: false }));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
+          setGlossary((prev) => {
+            const terms = new Set(prev.map((g) => g.term));
+            const newOnes = job.completed
+              .flatMap((item: Record<string, unknown[]>) => (item.glossary || []) as GlossaryDraft[])
+              .filter((g: GlossaryDraft) => !terms.has(g.term))
+              .map((g: GlossaryDraft) => ({ ...g, accepted: false }));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
         }
 
         if (job.status === "done") {
