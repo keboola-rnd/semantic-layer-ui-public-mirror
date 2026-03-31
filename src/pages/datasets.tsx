@@ -4,19 +4,41 @@ import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import { ROLE_COLORS } from "@/lib/constants";
 import { RevisionBadge } from "@/components/shared/object-meta";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { ArrowUpDown } from "lucide-react";
+
+type SortKey = "name" | "fields" | "updated";
 
 export function DatasetsPage() {
   const { modelUUID } = useModel();
   const { data: datasets, isLoading } = useDatasets(modelUUID);
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("name");
+  const [sortAsc, setSortAsc] = useState(true);
 
-  const filtered = datasets?.filter(
-    (d) =>
-      d.attributes.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.attributes.tableId.toLowerCase().includes(search.toLowerCase()) ||
-      (d.attributes.description || "").toLowerCase().includes(search.toLowerCase())
-  );
+  function toggleSort(key: SortKey) {
+    if (sortBy === key) setSortAsc(!sortAsc);
+    else { setSortBy(key); setSortAsc(true); }
+  }
+
+  const filtered = useMemo(() => {
+    let result = datasets?.filter(
+      (d) =>
+        d.attributes.name.toLowerCase().includes(search.toLowerCase()) ||
+        d.attributes.tableId.toLowerCase().includes(search.toLowerCase()) ||
+        (d.attributes.description || "").toLowerCase().includes(search.toLowerCase())
+    ) || [];
+
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "name") cmp = a.attributes.name.localeCompare(b.attributes.name);
+      else if (sortBy === "fields") cmp = (a.attributes.fields?.length || 0) - (b.attributes.fields?.length || 0);
+      else if (sortBy === "updated") cmp = a.meta.lastUpdated.localeCompare(b.meta.lastUpdated);
+      return sortAsc ? cmp : -cmp;
+    });
+
+    return result;
+  }, [datasets, search, sortBy, sortAsc]);
 
   if (isLoading) {
     return (
@@ -50,11 +72,17 @@ export function DatasetsPage() {
         <table className="w-full text-sm min-w-[700px]">
           <thead>
             <tr className="bg-muted/50 border-b border-border">
-              <th className="text-left px-3 py-2 font-medium w-[160px]">Name</th>
-              <th className="text-left px-3 py-2 font-medium w-[50px]">Fields</th>
+              <th className="text-left px-3 py-2 font-medium w-[160px] cursor-pointer hover:text-primary" onClick={() => toggleSort("name")}>
+                Name {sortBy === "name" && <ArrowUpDown className="h-3 w-3 inline ml-0.5" />}
+              </th>
+              <th className="text-left px-3 py-2 font-medium w-[50px] cursor-pointer hover:text-primary" onClick={() => toggleSort("fields")}>
+                Fields {sortBy === "fields" && <ArrowUpDown className="h-3 w-3 inline ml-0.5" />}
+              </th>
               <th className="text-left px-3 py-2 font-medium">Roles</th>
               <th className="text-left px-3 py-2 font-medium">Grain</th>
-              <th className="text-right px-3 py-2 font-medium w-[120px]">Version</th>
+              <th className="text-right px-3 py-2 font-medium w-[120px] cursor-pointer hover:text-primary" onClick={() => toggleSort("updated")}>
+                Version {sortBy === "updated" && <ArrowUpDown className="h-3 w-3 inline ml-0.5" />}
+              </th>
             </tr>
           </thead>
           <tbody>

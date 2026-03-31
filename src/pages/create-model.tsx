@@ -39,6 +39,17 @@ interface ConstraintDraft {
 export function CreateModelPage() {
   const [step, setStep] = useState(0);
 
+  // Warn before leaving wizard with unsaved progress
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (step > 0) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [step]);
+
   // Step 1 state
   const [projectData, setProjectData] = useState<ProjectStepData>({
     modelName: "", modelDescription: "", sqlDialect: "Snowflake",
@@ -54,6 +65,7 @@ export function CreateModelPage() {
 
   // Skeleton loading
   const [skeletonLoading, setSkeletonLoading] = useState(false);
+  const [skeletonError, setSkeletonError] = useState("");
   const [rawTables, setRawTables] = useState<Record<string, unknown> | null>(null);
 
   // AI streaming state
@@ -79,6 +91,7 @@ export function CreateModelPage() {
   // ── Step 1 → 2: Auto-build skeleton ──
   async function handleProjectNext() {
     setSkeletonLoading(true);
+    setSkeletonError("");
     try {
       const resp = await fetch("/backend/skeleton", {
         method: "POST",
@@ -98,7 +111,7 @@ export function CreateModelPage() {
       setRawTables(data.tables || null);
       setStep(1);
     } catch (err) {
-      console.error("Skeleton failed:", err);
+      setSkeletonError(err instanceof Error ? err.message : "Failed to build skeleton");
     } finally {
       setSkeletonLoading(false);
     }
@@ -229,6 +242,7 @@ export function CreateModelPage() {
           onChange={setProjectData}
           onNext={handleProjectNext}
           loading={skeletonLoading}
+          error={skeletonError}
         />
       )}
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Check, Database, BarChart3, GitBranch, BookOpen } from "lucide-react";
+import { Loader2, Check, Database, BarChart3, GitBranch, BookOpen, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -73,6 +73,9 @@ export function StepReview({
           <div className="border rounded-lg p-3"><BarChart3 className="h-4 w-4 inline mr-1.5 text-green-500" />{result.created.metrics} metrics</div>
           <div className="border rounded-lg p-3"><GitBranch className="h-4 w-4 inline mr-1.5 text-purple-500" />{result.created.relationships} relationships</div>
           <div className="border rounded-lg p-3"><BookOpen className="h-4 w-4 inline mr-1.5 text-orange-500" />{result.created.glossary} glossary terms</div>
+          {(result.created as Record<string, number>).constraints > 0 && (
+            <div className="border rounded-lg p-3 col-span-2"><ShieldCheck className="h-4 w-4 inline mr-1.5 text-red-500" />{(result.created as Record<string, number>).constraints} constraints</div>
+          )}
         </div>
         {result.errors.length > 0 && (
           <div className="text-left border border-destructive/30 rounded-lg p-3">
@@ -82,12 +85,25 @@ export function StepReview({
             ))}
           </div>
         )}
+        <div className="flex gap-3 justify-center">
         <button
           onClick={() => navigate("/")}
-          className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          className="px-6 py-2 text-sm border border-border rounded-md hover:bg-accent"
         >
           Go to Dashboard
         </button>
+        <button
+          onClick={() => {
+            // Select the newly created model and go to dashboard
+            localStorage.setItem("selected-model-uuid", result.modelUUID);
+            navigate("/");
+            window.location.reload();
+          }}
+          className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        >
+          View Model
+        </button>
+        </div>
       </div>
     );
   }
@@ -97,6 +113,7 @@ export function StepReview({
     { icon: BarChart3, label: "Metrics", count: metrics.length, color: "text-green-500" },
     { icon: GitBranch, label: "Relationships", count: relationships.length, color: "text-purple-500" },
     { icon: BookOpen, label: "Glossary", count: glossary.length, color: "text-orange-500" },
+    { icon: ShieldCheck, label: "Constraints", count: (constraints || []).length, color: "text-red-500" },
   ];
 
   return (

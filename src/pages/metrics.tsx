@@ -1,4 +1,5 @@
 import { useMetrics, useCreateMetric } from "@/hooks/use-metrics";
+import { useDatasets } from "@/hooks/use-datasets";
 import { useModel } from "@/providers/model-context";
 import { Link } from "react-router";
 import { truncate } from "@/lib/utils";
@@ -11,11 +12,13 @@ import { sql } from "@codemirror/lang-sql";
 export function MetricsPage() {
   const { modelUUID } = useModel();
   const { data: metrics, isLoading } = useMetrics(modelUUID);
+  const { data: datasets } = useDatasets(modelUUID);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSql, setNewSql] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newDataset, setNewDataset] = useState("");
   const createMetric = useCreateMetric();
 
   const filtered = metrics?.filter(
@@ -69,10 +72,19 @@ export function MetricsPage() {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-medium block mb-1">Name</label>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="metric_name" className="w-full px-2 py-1.5 text-sm border border-input rounded-md bg-background" />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Dataset</label>
+              <select value={newDataset} onChange={(e) => setNewDataset(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-input rounded-md bg-background">
+                <option value="">Select dataset...</option>
+                {datasets?.map((d) => (
+                  <option key={d.id} value={d.attributes.tableId}>{d.attributes.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium block mb-1">Description</label>
@@ -88,8 +100,8 @@ export function MetricsPage() {
           <button
             onClick={() => {
               if (!newName || !newSql) return;
-              createMetric.mutate({ modelUUID, name: newName, sql: newSql, description: newDesc }, {
-                onSuccess: () => { setShowCreate(false); setNewName(""); setNewSql(""); setNewDesc(""); },
+              createMetric.mutate({ modelUUID, name: newName, sql: newSql, description: newDesc, dataset: newDataset || undefined }, {
+                onSuccess: () => { setShowCreate(false); setNewName(""); setNewSql(""); setNewDesc(""); setNewDataset(""); },
               });
             }}
             disabled={!newName || !newSql || createMetric.isPending}

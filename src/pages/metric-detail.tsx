@@ -1,6 +1,6 @@
-import { useParams, Link } from "react-router";
-import { useMetric, useUpdateMetric } from "@/hooks/use-metrics";
-import { ArrowLeft, Save, Pencil } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router";
+import { useMetric, useUpdateMetric, useDeleteMetric } from "@/hooks/use-metrics";
+import { ArrowLeft, Save, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { ObjectMetaPanel } from "@/components/shared/object-meta";
@@ -9,8 +9,11 @@ import { sql } from "@codemirror/lang-sql";
 export function MetricDetailPage() {
   const { uuid } = useParams<{ uuid: string }>();
   const { data: metric, isLoading } = useMetric(uuid || "");
+  const navigate = useNavigate();
   const updateMetric = useUpdateMetric();
+  const deleteMetric = useDeleteMetric();
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [editSql, setEditSql] = useState("");
   const [editDesc, setEditDesc] = useState("");
 
@@ -47,12 +50,10 @@ export function MetricDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold">{m.name}</h2>
             {!editing && (
-              <button
-                onClick={startEdit}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+              <>
+                <button onClick={startEdit} className="text-muted-foreground hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                <button onClick={() => setConfirmDelete(true)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
             )}
           </div>
           {m.dataset && (
@@ -117,6 +118,26 @@ export function MetricDetailPage() {
           >
             Cancel
           </button>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-destructive">Delete this metric?</p>
+            <p className="text-xs text-muted-foreground">This is a soft delete. The name will be permanently reserved.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-accent">Cancel</button>
+            <button
+              onClick={() => { if (uuid) deleteMetric.mutate(uuid, { onSuccess: () => navigate("/metrics") }); }}
+              disabled={deleteMetric.isPending}
+              className="px-3 py-1.5 text-xs bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
+            >
+              {deleteMetric.isPending ? "Deleting..." : "Delete"}
+            </button>
+          </div>
         </div>
       )}
 

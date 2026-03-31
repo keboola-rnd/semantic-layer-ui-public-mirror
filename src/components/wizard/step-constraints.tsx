@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ConstraintDraft {
   name: string;
@@ -64,7 +65,15 @@ export function StepConstraints({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-[10px] font-medium block mb-0.5">Name (snake_case)</label>
-                <input value={c.name} onChange={(e) => update(i, { name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} placeholder="revenue_positive" className="w-full px-2 py-1 text-sm border border-input rounded bg-background font-mono" />
+                <input
+                  value={c.name}
+                  onChange={(e) => update(i, { name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })}
+                  placeholder="revenue_positive"
+                  className={cn("w-full px-2 py-1 text-sm border rounded bg-background font-mono", c.name && !/^[a-z][a-z0-9_]*$/.test(c.name) ? "border-destructive" : "border-input")}
+                />
+                {c.name && !/^[a-z][a-z0-9_]*$/.test(c.name) && (
+                  <p className="text-[9px] text-destructive mt-0.5">Must start with a letter, only a-z, 0-9, _</p>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-medium block mb-0.5">Type</label>

@@ -66,12 +66,12 @@ export function CommandPalette() {
         type: "dataset",
         path: `/datasets/${d.id}`,
       });
-      // Also index field names
+      // Also index field names — label shows dataset context
       for (const f of d.attributes.fields || []) {
         items.push({
           id: `${d.id}-${f.name}`,
-          label: `${d.attributes.name}.${f.name}`,
-          sublabel: `${f.role || ""} ${f.type || ""} - ${f.description || ""}`.trim(),
+          label: f.name,
+          sublabel: `${d.attributes.name} → ${f.role || "?"} (${f.type || "?"}) ${f.description ? "— " + f.description : ""}`,
           type: "dataset",
           path: `/datasets/${d.id}`,
         });

@@ -1,15 +1,18 @@
-import { useParams, Link } from "react-router";
-import { useGlossaryTerm, useUpdateGlossaryTerm } from "@/hooks/use-glossary";
-import { ArrowLeft, Save, Pencil } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router";
+import { useGlossaryTerm, useUpdateGlossaryTerm, useDeleteGlossaryTerm } from "@/hooks/use-glossary";
+import { ArrowLeft, Save, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ObjectMetaPanel } from "@/components/shared/object-meta";
 
 export function GlossaryDetailPage() {
   const { uuid } = useParams<{ uuid: string }>();
   const { data: term, isLoading } = useGlossaryTerm(uuid || "");
+  const navigate = useNavigate();
   const updateTerm = useUpdateGlossaryTerm();
+  const deleteTerm = useDeleteGlossaryTerm();
   const [editing, setEditing] = useState(false);
   const [editDef, setEditDef] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (isLoading || !term) {
     return <div className="animate-pulse h-64 bg-muted rounded-lg" />;
@@ -43,9 +46,10 @@ export function GlossaryDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold">{g.term}</h2>
             {!editing && (
-              <button onClick={startEdit} className="text-muted-foreground hover:text-foreground">
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+              <>
+                <button onClick={startEdit} className="text-muted-foreground hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                <button onClick={() => setConfirmDelete(true)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+              </>
             )}
           </div>
         </div>
@@ -98,6 +102,25 @@ export function GlossaryDetailPage() {
                 {ref}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-destructive">Delete this glossary term?</p>
+            <p className="text-xs text-muted-foreground">This is a soft delete. The term name will be permanently reserved.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-accent">Cancel</button>
+            <button
+              onClick={() => { if (uuid) deleteTerm.mutate(uuid, { onSuccess: () => navigate("/glossary") }); }}
+              disabled={deleteTerm.isPending}
+              className="px-3 py-1.5 text-xs bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
+            >
+              {deleteTerm.isPending ? "Deleting..." : "Delete"}
+            </button>
           </div>
         </div>
       )}

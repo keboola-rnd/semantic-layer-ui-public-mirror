@@ -43,6 +43,7 @@ export function StepProject({
   onChange: (d: ProjectStepData) => void;
   onNext: () => void;
   loading?: boolean;
+  error?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -214,6 +215,10 @@ export function StepProject({
               );
             })}
           </div>
+
+          {externalLoading === false && error && (
+            <p className="text-sm text-destructive mb-2">{error}</p>
+          )}
 
           <button
             onClick={() => { onChange({ ...data, selectedTableIds: [] }); onNext(); }}

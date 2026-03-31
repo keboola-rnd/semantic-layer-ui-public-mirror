@@ -4,7 +4,7 @@ import { Database, BarChart3, GitBranch, BookOpen, ShieldCheck } from "lucide-re
 import { Link } from "react-router";
 
 export function DashboardPage() {
-  const { modelUUID } = useModel();
+  const { modelUUID, setModelUUID } = useModel();
   const { data: models, isLoading, error } = useModelSummaries();
   const model = models?.find((m) => m.uuid === modelUUID);
 
@@ -37,10 +37,15 @@ export function DashboardPage() {
     );
   }
 
+  if (!model && models && models.length > 0) {
+    // Auto-select first model if none matches
+    setModelUUID(models[0].uuid);
+  }
+
   if (!model) {
     return (
       <div className="text-center py-20 text-muted-foreground">
-        <p>Select a model to get started.</p>
+        <p>{models?.length ? "Loading model..." : "No models found. Create one to get started."}</p>
       </div>
     );
   }
