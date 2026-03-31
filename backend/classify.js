@@ -4,31 +4,80 @@
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 
-async function callClaude(prompt, maxTokens = 8192) {
+async function callClaude(prompt, maxTokens = 4096) {
   const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — add it as a data app secret");
 
-  const resp = await fetch(ANTHROPIC_API, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  console.log(`[claude] Calling API (${prompt.length} chars, max_tokens=${maxTokens})...`);
 
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Anthropic API ${resp.status}: ${err.substring(0, 200)}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000); // 2min timeout
+
+  try {
+    const resp = await fetch(ANTHROPIC_API, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error(`[claude] API error ${resp.status}:`, err.substring(0, 300));
+      throw new Error(`Anthropic API ${resp.status}: ${err.substring(0, 200)}`);
+    }
+
+    const body = await resp.json();
+    const text = body.content?.[0]?.text || "";
+    console.log(`[claude] Response OK (${text.length} chars, stop=${body.stop_reason})`);
+    return text;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      throw new Error("Anthropic API call timed out after 2 minutes");
+    }
+    throw err;
   }
+}
 
-  const body = await resp.json();
-  return body.content?.[0]?.text || "";
+/** Quick test that the API key works */
+export async function testApiKey() {
+  const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
+  if (!apiKey) return { ok: false, error: "ANTHROPIC_API_KEY not set" };
+
+  try {
+    const resp = await fetch(ANTHROPIC_API, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "Say OK" }],
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      return { ok: false, error: `API returned ${resp.status}: ${err.substring(0, 100)}` };
+    }
+    const body = await resp.json();
+    return { ok: true, response: body.content?.[0]?.text, model: body.model };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 function parseJSON(text) {

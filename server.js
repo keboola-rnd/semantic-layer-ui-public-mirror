@@ -6,7 +6,9 @@ let multer, introspectProject, fetchTableDetails, classifyTables, enrichFromFile
 try {
   multer = (await import("multer")).default;
   ({ introspectProject, fetchTableDetails } = await import("./backend/introspect.js"));
-  ({ classifyTables, enrichFromFile } = await import("./backend/classify.js"));
+  let testApiKey;
+  ({ classifyTables, enrichFromFile, testApiKey } = await import("./backend/classify.js"));
+  globalThis._testApiKey = testApiKey;
   console.log("[init] Backend modules loaded successfully");
 } catch (err) {
   console.error("[init] Failed to load backend modules:", err.message);
@@ -38,6 +40,16 @@ app.get("/health", (_req, res) =>
     hasAnthropicKey: !!(process.env.ANTHROPIC_API_KEY || "").trim(),
   })
 );
+
+// Test AI connectivity
+app.get("/backend/test-ai", async (_req, res) => {
+  if (globalThis._testApiKey) {
+    const result = await globalThis._testApiKey();
+    res.json(result);
+  } else {
+    res.json({ ok: false, error: "AI module not loaded" });
+  }
+});
 
 app.all("/auth/status", (_req, res) => {
   res.json({ authenticated: !!KBC_TOKEN, metastoreUrl: METASTORE_URL });
