@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 // Trim whitespace — Keboola UI sometimes introduces leading/trailing spaces
 const METASTORE_URL =
   (process.env.METASTORE_URL || "https://metastore.us-east4.gcp.keboola.com").trim();
-const KBC_TOKEN = (process.env.KBC_TOKEN || "").trim();
+const KBC_TOKEN = (process.env.KBC_METASTORE_TOKEN || process.env.KBC_TOKEN || "").trim();
 
 // Health check + debug info
 app.get("/health", (_req, res) =>
