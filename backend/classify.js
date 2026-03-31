@@ -4,7 +4,7 @@
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 
-async function callClaude(prompt, maxTokens = 16000) {
+async function callClaude(prompt, maxTokens = 8192) {
   const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — add it as a data app secret");
 
@@ -93,18 +93,15 @@ function parseJSON(text) {
   return JSON.parse(s);
 }
 
-const CLASSIFY_PROMPT = `You are classifying columns in a data warehouse for a semantic layer.
+const CLASSIFY_PROMPT = `Classify columns for a semantic layer. For each table:
+- role: key/dimension/measure/timestamp
+- type: string/integer/decimal/boolean/date/datetime/json
 
-For each table, classify every column:
-- role: "key" (PKs, FKs, columns ending _id), "dimension" (categorical), "measure" (numeric for aggregation), "timestamp" (dates)
-- type: "string", "integer", "decimal", "boolean", "date", "datetime", "json"
+Also suggest metrics (SQL aggs), relationships (JOINs), glossary terms.
+Keep descriptions SHORT (under 10 words). Respond with ONLY valid JSON:
+{"datasets":[{"tableId":"...","name":"...","description":"...","grain":"...","fields":[{"name":"...","role":"...","type":"...","description":"..."}]}],"metrics":[{"name":"...","sql":"...","dataset":"...","description":"..."}],"relationships":[{"name":"...","from":"...","to":"...","on":"...","type":"left"}],"glossary":[{"term":"...","definition":"...","seeAlso":[]}]}`;
 
-Also suggest metrics (SQL aggregations), relationships (JOINs), and glossary terms.
-
-IMPORTANT: Respond with ONLY valid JSON, no markdown, no explanation:
-{"datasets":[{"tableId":"...","name":"...","description":"...","grain":"...","primaryKey":[],"fields":[{"name":"...","role":"...","type":"...","description":"..."}],"ai":{"keywords":[]}}],"metrics":[{"name":"...","sql":"...","dataset":"...","description":"..."}],"relationships":[{"name":"...","from":"...","to":"...","on":"...","type":"left"}],"glossary":[{"term":"...","definition":"...","seeAlso":[]}]}`;
-
-const BATCH_SIZE = 8;
+const BATCH_SIZE = 5;
 
 export async function classifyTables(tables, projectContext = {}) {
   const tableSchemas = Object.entries(tables).map(([tableId, t]) => ({
