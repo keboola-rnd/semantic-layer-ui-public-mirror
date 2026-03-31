@@ -23,6 +23,7 @@ export function StepReview({
   metrics: Array<Record<string, unknown>>;
   relationships: Array<Record<string, unknown>>;
   glossary: Array<Record<string, unknown>>;
+  constraints?: Array<Record<string, unknown>>;
   onBack: () => void;
 }) {
   const [creating, setCreating] = useState(false);
@@ -38,7 +39,7 @@ export function StepReview({
       const resp = await fetch("/backend/create-model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, datasets, metrics, relationships, glossary }),
+        body: JSON.stringify({ model, datasets, metrics, relationships, glossary, constraints }),
       });
       if (!resp.ok) {
         const err = await resp.json();

@@ -37,10 +37,12 @@ export function StepProject({
   data,
   onChange,
   onNext,
+  loading: externalLoading,
 }: {
   data: ProjectStepData;
   onChange: (d: ProjectStepData) => void;
   onNext: () => void;
+  loading?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -214,12 +216,12 @@ export function StepProject({
           </div>
 
           <button
-            onClick={handleFetchTableDetails}
-            disabled={data.selectedBuckets.length === 0 || loadingTables}
+            onClick={() => { onChange({ ...data, selectedTableIds: [] }); onNext(); }}
+            disabled={data.selectedBuckets.length === 0 || externalLoading}
             className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
           >
-            {loadingTables ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Fetching table details...</>
+            {externalLoading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Building dataset skeleton...</>
             ) : (
               <>Continue with {selectedTableCount} tables</>
             )}

@@ -2,12 +2,13 @@ import express from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-let multer, introspectProject, fetchTableDetails, classifyTables, enrichFromFile;
+let multer, introspectProject, fetchTableDetails, classifyTables, enrichFromFile, testApiKey;
+let buildSkeleton, suggestBasicMetrics, suggestRelationships;
 try {
   multer = (await import("multer")).default;
   ({ introspectProject, fetchTableDetails } = await import("./backend/introspect.js"));
-  let testApiKey;
   ({ classifyTables, enrichFromFile, testApiKey } = await import("./backend/classify.js"));
+  ({ buildSkeleton, suggestBasicMetrics, suggestRelationships } = await import("./backend/heuristic.js"));
   globalThis._testApiKey = testApiKey;
   console.log("[init] Backend modules loaded successfully");
 } catch (err) {
@@ -82,6 +83,74 @@ app.post("/backend/introspect/tables", async (req, res) => {
     console.error("[introspect/tables] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── Backend: Skeleton (heuristic, instant) ──────────────────────────────────
+
+app.post("/backend/skeleton", async (req, res) => {
+  try {
+    const { tableIds, storageUrl } = req.body;
+    const tables = await fetchTableDetails(tableIds, { token: KBC_TOKEN, storageUrl });
+    const datasets = buildSkeleton(tables);
+    const metrics = suggestBasicMetrics(datasets);
+    const relationships = suggestRelationships(datasets);
+    console.log(`[skeleton] ${datasets.length} datasets, ${metrics.length} metrics, ${relationships.length} relationships`);
+    res.json({ datasets, metrics, relationships, tables });
+  } catch (err) {
+    console.error("[skeleton] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Backend: AI Classify Streaming (per-table, polling) ─────────────────────
+
+const streamJobs = new Map();
+
+app.post("/backend/classify-stream", async (req, res) => {
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const { tables, projectName, sqlDialect } = req.body;
+  const tableEntries = Object.entries(tables);
+
+  streamJobs.set(jobId, {
+    status: "running",
+    completed: [],
+    completedCount: 0,
+    totalCount: tableEntries.length,
+  });
+
+  res.json({ jobId, totalCount: tableEntries.length });
+
+  // Process tables in small batches of 3 for fast first results
+  const STREAM_BATCH = 3;
+  for (let i = 0; i < tableEntries.length; i += STREAM_BATCH) {
+    const batch = Object.fromEntries(tableEntries.slice(i, i + STREAM_BATCH));
+    try {
+      const result = await classifyTables(batch, { projectName, sqlDialect });
+      const job = streamJobs.get(jobId);
+      if (job) {
+        job.completed.push(...(result.datasets || []).map((d) => ({
+          tableId: d.tableId,
+          dataset: d,
+          metrics: (result.metrics || []).filter((m) => m.dataset === d.tableId),
+          relationships: result.relationships || [],
+          glossary: result.glossary || [],
+        })));
+        job.completedCount = job.completed.length;
+      }
+    } catch (err) {
+      console.error(`[classify-stream] Batch failed:`, err.message);
+    }
+  }
+
+  const job = streamJobs.get(jobId);
+  if (job) job.status = "done";
+  setTimeout(() => streamJobs.delete(jobId), 600_000);
+});
+
+app.get("/backend/classify-stream/:jobId", (req, res) => {
+  const job = streamJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
 });
 
 // ─── Backend: AI Classify (async with polling) ──────────────────────────────
