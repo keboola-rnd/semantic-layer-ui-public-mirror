@@ -6,6 +6,7 @@ import {
   GitBranch,
   BookOpen,
   ShieldCheck,
+  PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ const ICON_MAP = {
   GitBranch,
   BookOpen,
   ShieldCheck,
+  PlusCircle,
 } as const;
 
 const NAV_ITEMS = [
@@ -57,6 +59,22 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="p-2 border-t border-border">
+        <NavLink
+          to="/create-model"
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )
+          }
+        >
+          <PlusCircle className="h-4 w-4" />
+          New Model
+        </NavLink>
+      </div>
     </aside>
   );
 }

@@ -14,6 +14,7 @@ import { RelationshipsPage } from "@/pages/relationships";
 import { GlossaryPage } from "@/pages/glossary";
 import { GlossaryDetailPage } from "@/pages/glossary-detail";
 import { ConstraintsPage } from "@/pages/constraints";
+import { CreateModelPage } from "@/pages/create-model";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="glossary" element={<GlossaryPage />} />
               <Route path="glossary/:uuid" element={<GlossaryDetailPage />} />
               <Route path="constraints" element={<ConstraintsPage />} />
+              <Route path="create-model" element={<CreateModelPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
