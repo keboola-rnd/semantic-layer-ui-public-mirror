@@ -5,7 +5,7 @@ import { Link } from "react-router";
 
 export function DashboardPage() {
   const { modelUUID } = useModel();
-  const { data: models, isLoading } = useModelSummaries();
+  const { data: models, isLoading, error } = useModelSummaries();
   const model = models?.find((m) => m.uuid === modelUUID);
 
   if (isLoading) {
@@ -14,6 +14,25 @@ export function DashboardPage() {
         {[1, 2, 3].map((i) => (
           <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-6 space-y-2">
+        <h3 className="font-semibold text-destructive">Failed to load models</h3>
+        <p className="text-sm text-muted-foreground">{String(error)}</p>
+        <p className="text-xs text-muted-foreground">
+          Check that the KBC_TOKEN has access to the metastore for the correct project.
+          The token from the data app's project may not match the project where the semantic layer is stored (project 4451).
+        </p>
+        <button
+          onClick={() => window.open("/health", "_blank")}
+          className="text-xs underline text-muted-foreground"
+        >
+          Check server health/debug info
+        </button>
       </div>
     );
   }
