@@ -3,6 +3,7 @@ import { useMetric, useUpdateMetric } from "@/hooks/use-metrics";
 import { ArrowLeft, Save, Pencil } from "lucide-react";
 import { useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { ObjectMetaPanel } from "@/components/shared/object-meta";
 import { sql } from "@codemirror/lang-sql";
 
 export function MetricDetailPage() {
@@ -120,13 +121,7 @@ export function MetricDetailPage() {
       )}
 
       {/* Metadata */}
-      <div className="border-t border-border pt-4 text-xs text-muted-foreground">
-        <div className="flex gap-6">
-          <span>UUID: <code className="bg-muted px-1 rounded">{metric.id}</code></span>
-          <span>Revision: {metric.meta.revision}</span>
-          <span>Updated: {new Date(metric.meta.lastUpdated).toLocaleString()}</span>
-        </div>
-      </div>
+      <ObjectMetaPanel meta={metric.meta} uuid={metric.id} />
     </div>
   );
 }

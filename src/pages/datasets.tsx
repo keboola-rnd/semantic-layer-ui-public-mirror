@@ -3,6 +3,7 @@ import { useModel } from "@/providers/model-context";
 import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import { ROLE_COLORS } from "@/lib/constants";
+import { RevisionBadge } from "@/components/shared/object-meta";
 import { useState } from "react";
 
 export function DatasetsPage() {
@@ -53,6 +54,7 @@ export function DatasetsPage() {
               <th className="text-left px-3 py-2 font-medium w-[50px]">Fields</th>
               <th className="text-left px-3 py-2 font-medium">Roles</th>
               <th className="text-left px-3 py-2 font-medium">Grain</th>
+              <th className="text-right px-3 py-2 font-medium w-[120px]">Version</th>
             </tr>
           </thead>
           <tbody>
@@ -99,6 +101,9 @@ export function DatasetsPage() {
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">
                     {d.attributes.grain || "-"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <RevisionBadge revision={d.meta.revision} updatedAt={d.meta.lastUpdated} />
                   </td>
                 </tr>
               );

@@ -2,6 +2,7 @@ import { useMetrics } from "@/hooks/use-metrics";
 import { useModel } from "@/providers/model-context";
 import { Link } from "react-router";
 import { truncate } from "@/lib/utils";
+import { RevisionBadge } from "@/components/shared/object-meta";
 import { useState } from "react";
 
 export function MetricsPage() {
@@ -50,7 +51,7 @@ export function MetricsPage() {
               <th className="text-left px-3 py-2 font-medium w-[160px]">Name</th>
               <th className="text-left px-3 py-2 font-medium">SQL</th>
               <th className="text-left px-3 py-2 font-medium w-[140px]">Dataset</th>
-              <th className="text-left px-3 py-2 font-medium">Description</th>
+              <th className="text-right px-3 py-2 font-medium w-[120px]">Version</th>
             </tr>
           </thead>
           <tbody>
@@ -59,24 +60,29 @@ export function MetricsPage() {
                 key={m.id}
                 className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
               >
-                <td className="px-4 py-2.5">
+                <td className="px-3 py-2.5">
                   <Link
                     to={`/metrics/${m.id}`}
-                    className="font-medium text-primary hover:underline"
+                    className="font-medium text-primary hover:underline block"
                   >
                     {m.attributes.name}
                   </Link>
+                  {m.attributes.description && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {truncate(m.attributes.description, 60)}
+                    </span>
+                  )}
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-3 py-2.5">
                   <code className="text-[11px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
                     {truncate(m.attributes.sql, 60)}
                   </code>
                 </td>
-                <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                  {m.attributes.dataset || "-"}
+                <td className="px-3 py-2.5 font-mono text-[10px] text-muted-foreground">
+                  {m.attributes.dataset ? m.attributes.dataset.split(".").pop() : "-"}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-xs truncate">
-                  {truncate(m.attributes.description || "", 80)}
+                <td className="px-3 py-2.5 text-right">
+                  <RevisionBadge revision={m.meta.revision} updatedAt={m.meta.lastUpdated} />
                 </td>
               </tr>
             ))}

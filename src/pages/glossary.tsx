@@ -1,7 +1,7 @@
 import { useGlossary } from "@/hooks/use-glossary";
 import { useModel } from "@/providers/model-context";
 import { Link } from "react-router";
-import { truncate } from "@/lib/utils";
+import { truncate, timeAgo } from "@/lib/utils";
 import { useState } from "react";
 
 export function GlossaryPage() {
@@ -57,23 +57,28 @@ export function GlossaryPage() {
                   {truncate(g.attributes.definition, 150)}
                 </p>
               </div>
-              {g.attributes.seeAlso && g.attributes.seeAlso.length > 0 && (
-                <div className="flex gap-1 shrink-0">
-                  {g.attributes.seeAlso.slice(0, 3).map((ref) => (
-                    <span
-                      key={ref}
-                      className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono"
-                    >
-                      {ref.split(".").pop()}
-                    </span>
-                  ))}
-                  {g.attributes.seeAlso.length > 3 && (
-                    <span className="text-[10px] text-muted-foreground">
-                      +{g.attributes.seeAlso.length - 3}
-                    </span>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-[10px] text-muted-foreground">
+                  v{g.meta.revision} · {timeAgo(g.meta.lastUpdated)}
+                </span>
+                {g.attributes.seeAlso && g.attributes.seeAlso.length > 0 && (
+                  <div className="flex gap-1">
+                    {g.attributes.seeAlso.slice(0, 3).map((ref) => (
+                      <span
+                        key={ref}
+                        className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono"
+                      >
+                        {ref.split(".").pop()}
+                      </span>
+                    ))}
+                    {g.attributes.seeAlso.length > 3 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        +{g.attributes.seeAlso.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </Link>
         ))}

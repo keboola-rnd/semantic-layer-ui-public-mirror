@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router";
 import { useGlossaryTerm, useUpdateGlossaryTerm } from "@/hooks/use-glossary";
 import { ArrowLeft, Save, Pencil } from "lucide-react";
 import { useState } from "react";
+import { ObjectMetaPanel } from "@/components/shared/object-meta";
 
 export function GlossaryDetailPage() {
   const { uuid } = useParams<{ uuid: string }>();
@@ -101,13 +102,7 @@ export function GlossaryDetailPage() {
         </div>
       )}
 
-      <div className="border-t border-border pt-4 text-xs text-muted-foreground">
-        <div className="flex gap-6">
-          <span>UUID: <code className="bg-muted px-1 rounded">{term.id}</code></span>
-          <span>Revision: {term.meta.revision}</span>
-          <span>Updated: {new Date(term.meta.lastUpdated).toLocaleString()}</span>
-        </div>
-      </div>
+      <ObjectMetaPanel meta={term.meta} uuid={term.id} />
     </div>
   );
 }

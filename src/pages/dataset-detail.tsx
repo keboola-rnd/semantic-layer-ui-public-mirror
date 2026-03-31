@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ROLE_COLORS, TYPE_COLORS } from "@/lib/constants";
 import { ArrowLeft, Save, Check, X } from "lucide-react";
 import { useState, useCallback } from "react";
+import { ObjectMetaPanel } from "@/components/shared/object-meta";
 
 function InlineEdit({
   value,
@@ -72,7 +73,7 @@ export function DatasetDetailPage() {
   const updateDataset = useUpdateDataset();
   const [editingDescription, setEditingDescription] = useState(false);
   const [description, setDescription] = useState("");
-  const [activeTab, setActiveTab] = useState<"fields" | "ai" | "relationships">("fields");
+  const [activeTab, setActiveTab] = useState<"fields" | "ai" | "relationships" | "metadata">("fields");
 
   const handleFieldDescriptionSave = useCallback(
     (fieldName: string, newDesc: string) => {
@@ -152,7 +153,7 @@ export function DatasetDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
-        {(["fields", "ai", "relationships"] as const).map((tab) => (
+        {(["fields", "ai", "relationships", "metadata"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -317,6 +318,11 @@ export function DatasetDetailPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Metadata Tab */}
+      {activeTab === "metadata" && (
+        <ObjectMetaPanel meta={dataset.meta} uuid={dataset.id} />
       )}
     </div>
   );
