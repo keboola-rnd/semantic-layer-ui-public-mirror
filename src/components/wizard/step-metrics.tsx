@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, X, Pencil, Plus, Sparkles } from "lucide-react";
+import { Check, X, Pencil, Plus, Sparkles, CheckCheck } from "lucide-react";
 
 interface MetricDraft {
   name: string;
@@ -23,21 +23,27 @@ export function StepMetrics({
   onBack: () => void;
 }) {
   const [metrics, setMetrics] = useState<MetricDraft[]>(
-    initialMetrics.map((m) => ({ ...m, accepted: m.accepted ?? true }))
+    initialMetrics.map((m) => ({ ...m, accepted: m.accepted ?? false }))
   );
   const [editing, setEditing] = useState<number | null>(null);
 
-  function update(index: number, updates: Partial<MetricDraft>) {
-    const next = [...metrics];
-    next[index] = { ...next[index], ...updates };
+  function updateAll(next: MetricDraft[]) {
     setMetrics(next);
     onChange(next);
   }
 
+  function update(index: number, updates: Partial<MetricDraft>) {
+    const next = [...metrics];
+    next[index] = { ...next[index], ...updates };
+    updateAll(next);
+  }
+
   function remove(index: number) {
-    const next = metrics.filter((_, i) => i !== index);
-    setMetrics(next);
-    onChange(next);
+    updateAll(metrics.filter((_, i) => i !== index));
+  }
+
+  function acceptAll() {
+    updateAll(metrics.map((m) => ({ ...m, accepted: true })));
   }
 
   function addMetric() {
@@ -50,7 +56,8 @@ export function StepMetrics({
     onChange(next);
   }
 
-  const accepted = metrics.filter((m) => m.accepted);
+  const acceptedCount = metrics.filter((m) => m.accepted).length;
+  const pendingCount = metrics.length - acceptedCount;
 
   return (
     <div className="space-y-4">
@@ -58,15 +65,27 @@ export function StepMetrics({
         <div>
           <h3 className="text-lg font-semibold">Review Metrics</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            {accepted.length} of {metrics.length} metrics accepted. Edit or add your own.
+            {acceptedCount} of {metrics.length} metrics accepted.
+            {pendingCount > 0 && ` ${pendingCount} pending review.`}
+            {" "}Edit or add your own.
           </p>
         </div>
-        <button
-          onClick={addMetric}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-        >
-          <Plus className="h-3 w-3" /> Add Metric
-        </button>
+        <div className="flex gap-2">
+          {pendingCount > 0 && (
+            <button
+              onClick={acceptAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-green-300 text-green-700 rounded-md hover:bg-green-50"
+            >
+              <CheckCheck className="h-3 w-3" /> Accept All
+            </button>
+          )}
+          <button
+            onClick={addMetric}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            <Plus className="h-3 w-3" /> Add Metric
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -74,11 +93,12 @@ export function StepMetrics({
           <div
             key={i}
             className={`border rounded-lg p-4 transition-all ${
-              m.accepted ? "border-border" : "border-border/50 opacity-50"
+              m.accepted
+                ? "border-green-200 bg-green-50/30"
+                : "border-border"
             }`}
           >
             {editing === i ? (
-              /* Edit mode */
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -128,7 +148,6 @@ export function StepMetrics({
                 </button>
               </div>
             ) : (
-              /* View mode */
               <div className="flex items-start gap-3">
                 <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -137,6 +156,9 @@ export function StepMetrics({
                     <span className="text-[10px] text-muted-foreground font-mono">
                       {m.dataset ? m.dataset.split(".").pop() : "-"}
                     </span>
+                    {m.accepted && (
+                      <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded">accepted</span>
+                    )}
                   </div>
                   <code className="text-[11px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground block mt-1">
                     {m.sql}
@@ -153,13 +175,23 @@ export function StepMetrics({
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    onClick={() => update(i, { accepted: !m.accepted })}
-                    className={`p-1 ${m.accepted ? "text-green-600" : "text-muted-foreground"}`}
-                    title={m.accepted ? "Accepted" : "Rejected"}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </button>
+                  {!m.accepted ? (
+                    <button
+                      onClick={() => update(i, { accepted: true })}
+                      className="p-1.5 text-muted-foreground hover:text-green-600 border border-border rounded hover:border-green-300"
+                      title="Accept this metric"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => update(i, { accepted: false })}
+                      className="p-1.5 text-green-600 border border-green-300 rounded bg-green-50"
+                      title="Undo accept"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => remove(i)}
                     className="p-1 text-muted-foreground hover:text-destructive"

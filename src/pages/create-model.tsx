@@ -44,7 +44,7 @@ export function CreateModelPage() {
   function handleClassified(result: ClassifyResult) {
     setClassifyResult(result);
     setMetrics(
-      (result.metrics || []).map((m) => ({ ...m, accepted: true }))
+      (result.metrics || []).map((m) => ({ ...m, accepted: false }))
     );
   }
 
