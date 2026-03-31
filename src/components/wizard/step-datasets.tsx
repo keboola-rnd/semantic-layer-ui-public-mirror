@@ -66,18 +66,36 @@ export function StepDatasets({
       const tables = await detailResp.json();
       const tableCount = Object.keys(tables).length;
 
-      // Step 2: Classify with AI
+      // Step 2: Start classify job (returns immediately with jobId)
       setStatus(`AI is classifying ${tableCount} tables...`);
-      const classifyResp = await fetch("/backend/classify", {
+      const startResp = await fetch("/backend/classify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tables, projectName, sqlDialect }),
       });
-      if (!classifyResp.ok) {
-        const text = await classifyResp.text();
-        throw new Error(text.startsWith("<") ? `Classification timed out or failed (${classifyResp.status}). Try selecting fewer buckets.` : text);
+      if (!startResp.ok) {
+        const text = await startResp.text();
+        throw new Error(text.startsWith("<") ? `Failed to start classification (${startResp.status})` : text);
       }
-      const result = await classifyResp.json();
+      const { jobId } = await startResp.json();
+
+      // Step 3: Poll for results
+      let result = null;
+      while (true) {
+        await new Promise((r) => setTimeout(r, 2000)); // poll every 2s
+        const pollResp = await fetch(`/backend/classify/${jobId}`);
+        if (!pollResp.ok) throw new Error("Failed to check classification status");
+        const job = await pollResp.json();
+
+        if (job.status === "done") {
+          result = job.result;
+          break;
+        } else if (job.status === "error") {
+          throw new Error(job.error || "Classification failed");
+        }
+        // still running — keep polling
+      }
+
       setDatasets(result.datasets || []);
       onClassified(result);
     } catch (err: unknown) {

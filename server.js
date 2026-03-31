@@ -84,17 +84,35 @@ app.post("/backend/introspect/tables", async (req, res) => {
   }
 });
 
-// ─── Backend: AI Classify ────────────────────────────────────────────────────
+// ─── Backend: AI Classify (async with polling) ──────────────────────────────
+
+const classifyJobs = new Map(); // jobId → { status, result, error }
 
 app.post("/backend/classify", async (req, res) => {
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  classifyJobs.set(jobId, { status: "running" });
+
+  // Return immediately with job ID
+  res.json({ jobId });
+
+  // Run classification in background
   try {
     const { tables, projectName, sqlDialect } = req.body;
     const result = await classifyTables(tables, { projectName, sqlDialect });
-    res.json(result);
+    classifyJobs.set(jobId, { status: "done", result });
   } catch (err) {
     console.error("[classify] Error:", err.message);
-    res.status(500).json({ error: err.message });
+    classifyJobs.set(jobId, { status: "error", error: err.message });
   }
+
+  // Clean up old jobs after 10 minutes
+  setTimeout(() => classifyJobs.delete(jobId), 600_000);
+});
+
+app.get("/backend/classify/:jobId", (req, res) => {
+  const job = classifyJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
 });
 
 // ─── Backend: File Upload & Enrichment ───────────────────────────────────────
