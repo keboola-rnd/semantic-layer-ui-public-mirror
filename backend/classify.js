@@ -1,6 +1,7 @@
 /**
  * AI-assisted classification of table schemas using Claude.
  * Classifies fields, suggests metrics, relationships, and glossary terms.
+ * Handles large table counts by batching.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -13,64 +14,54 @@ const getClient = () => {
 
 const CLASSIFICATION_PROMPT = `You are a data analyst building a semantic layer for a Keboola data warehouse.
 
-Given the following table schemas from a Keboola project, produce a complete semantic layer in JSON.
+Given the following table schemas, produce a semantic layer in JSON.
 
 For each table, classify every column:
-- role: "key" (primary/foreign keys), "dimension" (categorical/descriptive), "measure" (numeric values that should be aggregated), "timestamp" (dates/times)
+- role: "key" (primary/foreign keys, columns ending in _id), "dimension" (categorical/descriptive), "measure" (numeric values for aggregation), "timestamp" (dates/times)
 - type: "string", "integer", "decimal", "boolean", "date", "datetime", "json"
 
-Use the column's native database type and name to determine role and type. Columns named *_id or that are primary keys should be "key". Date/timestamp columns should be "timestamp". Numeric columns with names suggesting amounts/counts/values should be "measure". Everything else is "dimension".
-
 Also generate:
-- metrics: SQL aggregation expressions for important measure columns. Use Snowflake SQL syntax with double-quoted column names. Include a descriptive name, the SQL expression, the source dataset (tableId), and a description.
-- relationships: JOIN conditions between tables. Look for matching column names across tables (e.g., company_id in both tables). Include from (tableId), to (tableId), the ON clause, join type ("left" or "inner"), and a descriptive name.
-- glossary: Business term definitions for important concepts in the data. Include term, definition, and seeAlso (array of related tableIds).
+- metrics: SQL aggregation expressions for measure columns (Snowflake syntax, double-quoted column names)
+- relationships: JOIN conditions between tables based on matching column names
+- glossary: Business term definitions for important concepts
 
-Respond with ONLY valid JSON (no markdown, no explanation) in this exact structure:
-{
-  "datasets": [
-    {
-      "tableId": "the.table.id",
-      "name": "table_name",
-      "description": "what this table contains",
-      "grain": "what one row represents",
-      "primaryKey": ["col1"],
-      "fields": [
-        { "name": "col_name", "role": "dimension", "type": "string", "description": "what this column is" }
-      ],
-      "ai": { "keywords": ["relevant", "search", "terms"] }
-    }
-  ],
-  "metrics": [
-    {
-      "name": "metric_name",
-      "sql": "SUM(\\"column\\")",
-      "dataset": "the.table.id",
-      "description": "what this measures"
-    }
-  ],
-  "relationships": [
-    {
-      "name": "from_to_to",
-      "from": "from.table.id",
-      "to": "to.table.id",
-      "on": "from.\\"col\\" = to.\\"col\\"",
-      "type": "left"
-    }
-  ],
-  "glossary": [
-    {
-      "term": "Business Term",
-      "definition": "What it means in business context",
-      "seeAlso": ["related.table.id"]
-    }
-  ]
-}`;
+Respond with ONLY valid JSON (no markdown fences, no explanation):
+{"datasets":[...],"metrics":[...],"relationships":[...],"glossary":[...]}`;
+
+const BATCH_SIZE = 25; // tables per Claude call
+
+async function classifyBatch(client, tableSchemas, projectContext) {
+  const userMessage = `Project: ${projectContext.projectName || "Unknown"}
+SQL Dialect: ${projectContext.sqlDialect || "Snowflake"}
+
+Tables (${tableSchemas.length}):
+${JSON.stringify(tableSchemas, null, 2)}`;
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 64000,
+    messages: [
+      { role: "user", content: CLASSIFICATION_PROMPT + "\n\n" + userMessage },
+    ],
+  });
+
+  const text = response.content[0]?.text || "";
+
+  // Extract JSON — handle markdown fences or raw JSON
+  let jsonStr = text.trim();
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+  // Find the JSON object boundaries
+  const firstBrace = jsonStr.indexOf("{");
+  if (firstBrace > 0) jsonStr = jsonStr.substring(firstBrace);
+
+  return JSON.parse(jsonStr);
+}
 
 export async function classifyTables(tables, projectContext = {}) {
   const client = getClient();
 
-  // Build table schema summary for the prompt
   const tableSchemas = Object.entries(tables).map(([tableId, t]) => ({
     tableId,
     name: t.name,
@@ -83,42 +74,85 @@ export async function classifyTables(tables, projectContext = {}) {
     })),
   }));
 
-  const userMessage = `Project: ${projectContext.projectName || "Unknown"}
-SQL Dialect: ${projectContext.sqlDialect || "Snowflake"}
-
-Tables (${tableSchemas.length}):
-${JSON.stringify(tableSchemas, null, 2)}`;
+  // Batch tables to avoid output truncation
+  const batches = [];
+  for (let i = 0; i < tableSchemas.length; i += BATCH_SIZE) {
+    batches.push(tableSchemas.slice(i, i + BATCH_SIZE));
+  }
 
   console.log(
-    `[classify] Sending ${tableSchemas.length} tables to Claude for classification...`
+    `[classify] Classifying ${tableSchemas.length} tables in ${batches.length} batch(es) of up to ${BATCH_SIZE}...`
   );
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 16000,
-    messages: [
-      { role: "user", content: CLASSIFICATION_PROMPT + "\n\n" + userMessage },
-    ],
-  });
+  const merged = { datasets: [], metrics: [], relationships: [], glossary: [] };
 
-  const text = response.content[0]?.text || "";
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    console.log(`[classify]   Batch ${i + 1}/${batches.length} (${batch.length} tables)...`);
 
-  // Extract JSON from response (handle potential markdown wrapping)
-  let jsonStr = text;
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1];
-
-  try {
-    const result = JSON.parse(jsonStr.trim());
-    console.log(
-      `[classify] Got ${result.datasets?.length || 0} datasets, ${result.metrics?.length || 0} metrics, ${result.relationships?.length || 0} relationships, ${result.glossary?.length || 0} glossary terms`
-    );
-    return result;
-  } catch (err) {
-    console.error("[classify] Failed to parse Claude response:", err.message);
-    console.error("[classify] Raw response:", text.substring(0, 500));
-    throw new Error("Failed to parse AI classification response");
+    try {
+      const result = await classifyBatch(client, batch, projectContext);
+      if (result.datasets) merged.datasets.push(...result.datasets);
+      if (result.metrics) merged.metrics.push(...result.metrics);
+      if (result.relationships) merged.relationships.push(...result.relationships);
+      if (result.glossary) merged.glossary.push(...result.glossary);
+    } catch (err) {
+      console.error(`[classify]   Batch ${i + 1} failed:`, err.message);
+      // Continue with other batches
+    }
   }
+
+  // If multiple batches, do a follow-up call to find cross-batch relationships
+  if (batches.length > 1) {
+    console.log(`[classify] Finding cross-batch relationships...`);
+    try {
+      const allTableIds = tableSchemas.map((t) => ({
+        tableId: t.tableId,
+        name: t.name,
+        columns: t.columns.map((c) => c.name),
+      }));
+
+      const crossResponse = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 8000,
+        messages: [
+          {
+            role: "user",
+            content: `Given these tables, suggest JOIN relationships between them based on matching column names. Respond with ONLY a JSON array of relationships:
+[{"name":"from_to_to","from":"from.table.id","to":"to.table.id","on":"from.\\"col\\" = to.\\"col\\"","type":"left"}]
+
+Tables: ${JSON.stringify(allTableIds)}`,
+          },
+        ],
+      });
+
+      const crossText = crossResponse.content[0]?.text || "";
+      let crossJson = crossText.trim();
+      const crossMatch = crossText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (crossMatch) crossJson = crossMatch[1].trim();
+      const firstBracket = crossJson.indexOf("[");
+      if (firstBracket > 0) crossJson = crossJson.substring(firstBracket);
+
+      const crossRels = JSON.parse(crossJson);
+      // Add only relationships not already found
+      const existingKeys = new Set(
+        merged.relationships.map((r) => `${r.from}|${r.to}`)
+      );
+      for (const r of crossRels) {
+        if (!existingKeys.has(`${r.from}|${r.to}`)) {
+          merged.relationships.push(r);
+        }
+      }
+    } catch (err) {
+      console.error(`[classify] Cross-batch relationship detection failed:`, err.message);
+    }
+  }
+
+  console.log(
+    `[classify] Total: ${merged.datasets.length} datasets, ${merged.metrics.length} metrics, ${merged.relationships.length} relationships, ${merged.glossary.length} glossary`
+  );
+
+  return merged;
 }
 
 const FILE_ENRICHMENT_PROMPT = `You are enriching a semantic layer with information from uploaded documentation.
@@ -129,23 +163,8 @@ Current semantic layer state:
 Document content:
 {DOCUMENT_CONTENT}
 
-Based on the document, suggest additions and improvements to the semantic layer. Respond with ONLY valid JSON:
-{
-  "suggestedMetrics": [
-    { "name": "metric_name", "sql": "SQL expression", "dataset": "table.id", "description": "what it measures" }
-  ],
-  "suggestedGlossary": [
-    { "term": "Term", "definition": "Business definition", "seeAlso": ["table.id"] }
-  ],
-  "fieldUpdates": [
-    { "tableId": "table.id", "fieldName": "column_name", "description": "improved description" }
-  ],
-  "suggestedRelationships": [
-    { "name": "rel_name", "from": "from.table.id", "to": "to.table.id", "on": "join condition", "type": "left" }
-  ]
-}
-
-Only suggest items that are clearly supported by the document. Reference exact table and column names from the current semantic layer.`;
+Extract and suggest additions. Respond with ONLY valid JSON (no markdown fences):
+{"suggestedMetrics":[],"suggestedGlossary":[],"fieldUpdates":[],"suggestedRelationships":[]}`;
 
 export async function enrichFromFile(fileContent, fileName, modelContext) {
   const client = getClient();
@@ -164,12 +183,14 @@ export async function enrichFromFile(fileContent, fileName, modelContext) {
   });
 
   const text = response.content[0]?.text || "";
-  let jsonStr = text;
+  let jsonStr = text.trim();
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1];
+  if (jsonMatch) jsonStr = jsonMatch[1].trim();
+  const firstBrace = jsonStr.indexOf("{");
+  if (firstBrace > 0) jsonStr = jsonStr.substring(firstBrace);
 
   try {
-    return JSON.parse(jsonStr.trim());
+    return JSON.parse(jsonStr);
   } catch (err) {
     console.error("[enrich] Failed to parse response:", err.message);
     throw new Error("Failed to parse AI enrichment response");

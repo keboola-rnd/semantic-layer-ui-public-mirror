@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, ChevronDown, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROLE_COLORS, TYPE_COLORS } from "@/lib/constants";
@@ -17,6 +17,8 @@ export function StepDatasets({
   projectName,
   sqlDialect,
   classifyResult,
+  autoStart,
+  onStarted,
   onClassified,
   onNext,
   onBack,
@@ -26,6 +28,8 @@ export function StepDatasets({
   projectName: string;
   sqlDialect: string;
   classifyResult: ClassifyResult | null;
+  autoStart: boolean;
+  onStarted: () => void;
   onClassified: (result: ClassifyResult) => void;
   onNext: () => void;
   onBack: () => void;
@@ -35,12 +39,11 @@ export function StepDatasets({
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [datasets, setDatasets] = useState<SemanticDataset[]>(classifyResult?.datasets || []);
-  const hasStarted = useRef(false);
 
-  // Auto-classify once on mount if no result yet
+  // Auto-classify once — controlled by parent to prevent re-fires on remount
   useEffect(() => {
-    if (!classifyResult && !hasStarted.current && tableIds.length > 0) {
-      hasStarted.current = true;
+    if (autoStart && !classifyResult && tableIds.length > 0) {
+      onStarted(); // Tell parent we've started — prevents re-fire
       handleClassify();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -140,7 +143,7 @@ export function StepDatasets({
         <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4">
           <p className="text-sm text-destructive">{error}</p>
           <button
-            onClick={() => { hasStarted.current = false; handleClassify(); }}
+            onClick={() => handleClassify()}
             className="text-xs underline mt-2"
           >
             Retry

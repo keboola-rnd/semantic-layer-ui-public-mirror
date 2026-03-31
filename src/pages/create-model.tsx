@@ -22,6 +22,7 @@ interface Suggestion {
 
 export function CreateModelPage() {
   const [step, setStep] = useState(0);
+  const [classifyStarted, setClassifyStarted] = useState(false);
 
   // Step 1 state
   const [projectData, setProjectData] = useState<ProjectStepData>({
@@ -105,6 +106,8 @@ export function CreateModelPage() {
           projectName={projectData.introspection?.projectName || ""}
           sqlDialect={projectData.sqlDialect}
           classifyResult={classifyResult as Parameters<typeof StepDatasets>[0]["classifyResult"]}
+          autoStart={!classifyStarted}
+          onStarted={() => setClassifyStarted(true)}
           onClassified={handleClassified}
           onNext={() => setStep(2)}
           onBack={() => setStep(0)}
