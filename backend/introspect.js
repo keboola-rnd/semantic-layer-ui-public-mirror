@@ -6,7 +6,7 @@
 const KBC_TOKEN = () =>
   (process.env.KBC_METASTORE_TOKEN || process.env.KBC_TOKEN || "").trim();
 const KBC_STORAGE_URL = () =>
-  (process.env.KBC_STORAGE_URL || "https://connection.us-east4.gcp.keboola.com").trim();
+  (process.env.KBC_URL || process.env.KBC_STORAGE_URL || "https://connection.us-east4.gcp.keboola.com").trim();
 
 async function storageGet(path, token, storageUrl) {
   const url = `${storageUrl}/v2/storage${path}`;
