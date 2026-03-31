@@ -172,9 +172,29 @@ app.post("/backend/create-model", async (req, res) => {
     const modelUUID = modelBody.data?.id || modelBody.id;
     console.log(`[create-model] Created model: ${model.name} (${modelUUID})`);
 
-    // 2. Create child objects
+    // 2. Validate datasets — ensure required fields exist
+    const validatedDatasets = (datasets || []).map((ds) => {
+      const d = { ...ds };
+      // Required: tableId, name, fqn, modelUUID
+      if (!d.tableId) {
+        console.warn(`[create-model] Dataset "${d.name}" missing tableId — skipping`);
+        return null;
+      }
+      if (!d.fqn) {
+        // Generate a placeholder FQN from tableId
+        d.fqn = `"KEBOOLA"."${d.tableId.replace(/\./g, '"."')}"`;
+      }
+      if (!d.name) d.name = d.tableId.split(".").pop() || "unnamed";
+      // Remove any extra fields that could cause 422
+      delete d.accepted;
+      return d;
+    }).filter(Boolean);
+
+    console.log(`[create-model] ${validatedDatasets.length}/${(datasets||[]).length} datasets valid`);
+
+    // 3. Create child objects
     const childTypes = [
-      { type: "semantic-dataset", items: datasets || [], key: "datasets", nameField: "name" },
+      { type: "semantic-dataset", items: validatedDatasets, key: "datasets", nameField: "name" },
       { type: "semantic-metric", items: metrics || [], key: "metrics", nameField: "name" },
       { type: "semantic-relationship", items: relationships || [], key: "relationships", nameField: "name" },
       { type: "semantic-glossary", items: glossary || [], key: "glossary", nameField: "term" },
@@ -182,7 +202,9 @@ app.post("/backend/create-model", async (req, res) => {
 
     for (const { type, items, key, nameField } of childTypes) {
       for (const item of items) {
+        // Clean up: remove non-schema fields
         const data = { ...item, modelUUID };
+        delete data.accepted;
         const name = item[nameField] || item.tableId || "unnamed";
 
         try {
@@ -202,8 +224,8 @@ app.post("/backend/create-model", async (req, res) => {
             created[key]++;
           } else {
             const errText = await resp.text();
-            errors.push({ type, name, status: resp.status, error: errText });
-            console.error(`[create-model] Failed ${type}/${name}: ${resp.status}`);
+            errors.push({ type, name, status: resp.status, error: errText.substring(0, 200) });
+            console.error(`[create-model] Failed ${type}/${name}: ${resp.status} — ${errText.substring(0, 300)}`);
           }
         } catch (err) {
           errors.push({ type, name, error: err.message });

@@ -97,9 +97,10 @@ const CLASSIFY_PROMPT = `Classify columns for a semantic layer. For each table:
 - role: key/dimension/measure/timestamp
 - type: string/integer/decimal/boolean/date/datetime/json
 
-Also suggest metrics (SQL aggs), relationships (JOINs), glossary terms.
-Keep descriptions SHORT (under 10 words). Respond with ONLY valid JSON:
-{"datasets":[{"tableId":"...","name":"...","description":"...","grain":"...","fields":[{"name":"...","role":"...","type":"...","description":"..."}]}],"metrics":[{"name":"...","sql":"...","dataset":"...","description":"..."}],"relationships":[{"name":"...","from":"...","to":"...","on":"...","type":"left"}],"glossary":[{"term":"...","definition":"...","seeAlso":[]}]}`;
+CRITICAL: Each dataset MUST include the exact "tableId" from the input (e.g. "in.c-bucket.table_name"). Copy it exactly.
+Also suggest metrics (SQL aggs with double-quoted column names), relationships (JOINs using tableId), glossary terms.
+Keep descriptions SHORT. Respond with ONLY valid JSON:
+{"datasets":[{"tableId":"in.c-bucket.table","name":"table","description":"...","grain":"...","primaryKey":["col"],"fields":[{"name":"col","role":"key","type":"string","description":"..."}]}],"metrics":[{"name":"metric","sql":"SUM(\\"col\\")","dataset":"in.c-bucket.table","description":"..."}],"relationships":[{"name":"a_to_b","from":"in.c-bucket.a","to":"in.c-bucket.b","on":"from.\\"id\\" = to.\\"id\\"","type":"left"}],"glossary":[{"term":"Term","definition":"...","seeAlso":["in.c-bucket.table"]}]}`;
 
 const BATCH_SIZE = 5;
 
