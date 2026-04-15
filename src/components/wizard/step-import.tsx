@@ -36,7 +36,8 @@ export function StepImport({
       icon: Globe,
       label: "Connect to OpenMetadata",
       description: "Pull your semantic layer directly from an OpenMetadata instance via API.",
-      available: true,
+      available: false,
+      badge: "Coming soon",
     },
     {
       id: "dawiso" as const,
@@ -51,7 +52,8 @@ export function StepImport({
       icon: FileText,
       label: "Import from PowerBI",
       description: "Export your PowerBI semantic model (.bim file) and import it here.",
-      available: true,
+      available: false,
+      badge: "Coming soon",
     },
   ];
 

@@ -210,13 +210,13 @@ app.post("/backend/upload", ...(upload ? [upload.single("file")] : []), async (r
 
 app.post("/backend/create-model", async (req, res) => {
   try {
-    const { model, datasets, metrics, relationships, glossary } = req.body;
+    const { model, datasets, metrics, relationships, glossary, constraints } = req.body;
     const headers = {
       "X-StorageAPI-Token": KBC_TOKEN,
       "Content-Type": "application/json",
     };
 
-    const created = { datasets: 0, metrics: 0, relationships: 0, glossary: 0 };
+    const created = { datasets: 0, metrics: 0, relationships: 0, glossary: 0, constraints: 0 };
     const errors = [];
 
     // 1. Create the model
@@ -267,6 +267,7 @@ app.post("/backend/create-model", async (req, res) => {
       { type: "semantic-metric", items: metrics || [], key: "metrics", nameField: "name" },
       { type: "semantic-relationship", items: relationships || [], key: "relationships", nameField: "name" },
       { type: "semantic-glossary", items: glossary || [], key: "glossary", nameField: "term" },
+      { type: "semantic-constraint", items: constraints || [], key: "constraints", nameField: "name" },
     ];
 
     for (const { type, items, key, nameField } of childTypes) {

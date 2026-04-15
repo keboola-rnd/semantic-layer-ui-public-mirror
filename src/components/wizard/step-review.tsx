@@ -16,6 +16,7 @@ export function StepReview({
   metrics,
   relationships,
   glossary,
+  constraints,
   onBack,
 }: {
   model: { name: string; description: string; sql_dialect: string };
