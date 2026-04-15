@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ConstraintDraft {
@@ -17,14 +17,29 @@ export function StepConstraints({
   onChange,
   onNext,
   onBack,
+  aiLoading,
 }: {
   constraints: ConstraintDraft[];
   metricNames: string[];
   onChange: (c: ConstraintDraft[]) => void;
   onNext: () => void;
   onBack: () => void;
+  aiLoading?: boolean;
 }) {
   const [items, setItems] = useState<ConstraintDraft[]>(initial);
+
+  // Sync when AI suggestions arrive from parent after mount
+  useEffect(() => {
+    if (initial.length > items.length) {
+      const existingNames = new Set(items.map((c) => c.name));
+      const newOnes = initial.filter((c) => !existingNames.has(c.name));
+      if (newOnes.length > 0) {
+        const combined = [...items, ...newOnes];
+        setItems(combined);
+        onChange(combined);
+      }
+    }
+  }, [initial.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateAll(next: ConstraintDraft[]) { setItems(next); onChange(next); }
   function update(i: number, u: Partial<ConstraintDraft>) { const n = [...items]; n[i] = { ...n[i], ...u }; updateAll(n); }
@@ -48,6 +63,11 @@ export function StepConstraints({
           <h3 className="text-lg font-semibold">Constraints</h3>
           <p className="text-sm text-muted-foreground mt-1">
             Define business rules that validate relationships between metrics. This step is optional.
+            {aiLoading && (
+              <span className="inline-flex items-center gap-1 ml-2 text-purple-600">
+                <Loader2 className="h-3 w-3 animate-spin" /> AI suggesting constraints...
+              </span>
+            )}
           </p>
         </div>
         <button onClick={addConstraint} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90">

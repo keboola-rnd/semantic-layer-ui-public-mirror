@@ -70,7 +70,7 @@ export async function listObjects<T>(
   objectType: SemanticObjectType,
   modelUUID?: string
 ): Promise<MetastoreObject<T>[]> {
-  const limit = objectType === "semantic-dataset" ? 1 : 20;
+  const limit = 20;
   let offset = 0;
   const items: MetastoreObject<T>[] = [];
   let consecutiveErrors = 0;

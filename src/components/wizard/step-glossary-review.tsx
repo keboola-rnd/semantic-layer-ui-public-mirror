@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, X, Pencil, Plus, BookOpen, CheckCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, X, Pencil, Plus, BookOpen, CheckCheck, Loader2 } from "lucide-react";
 
 interface GlossaryDraft {
   term: string;
@@ -14,15 +14,30 @@ export function StepGlossaryReview({
   onChange,
   onNext,
   onBack,
+  aiLoading,
 }: {
   glossary: GlossaryDraft[];
   datasetIds: string[];
   onChange: (g: GlossaryDraft[]) => void;
   onNext: () => void;
   onBack: () => void;
+  aiLoading?: boolean;
 }) {
   const [terms, setTerms] = useState<GlossaryDraft[]>(initial);
   const [editing, setEditing] = useState<number | null>(null);
+
+  // Sync when AI suggestions arrive from parent after mount
+  useEffect(() => {
+    if (initial.length > terms.length) {
+      const existingTerms = new Set(terms.map((t) => t.term));
+      const newOnes = initial.filter((t) => !existingTerms.has(t.term));
+      if (newOnes.length > 0) {
+        const combined = [...terms, ...newOnes];
+        setTerms(combined);
+        onChange(combined);
+      }
+    }
+  }, [initial.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateAll(next: GlossaryDraft[]) { setTerms(next); onChange(next); }
   function update(i: number, u: Partial<GlossaryDraft>) { const n = [...terms]; n[i] = { ...n[i], ...u }; updateAll(n); }
@@ -44,6 +59,11 @@ export function StepGlossaryReview({
           <h3 className="text-lg font-semibold">Review Glossary</h3>
           <p className="text-sm text-muted-foreground mt-1">
             {acceptedCount}/{terms.length} accepted. Business terms help AI understand your data.
+            {aiLoading && (
+              <span className="inline-flex items-center gap-1 ml-2 text-purple-600">
+                <Loader2 className="h-3 w-3 animate-spin" /> AI generating terms...
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">

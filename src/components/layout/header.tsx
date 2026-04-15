@@ -1,4 +1,4 @@
-import { useModelSummaries } from "@/hooks/use-models";
+import { useModels } from "@/hooks/use-models";
 import { useModel } from "@/providers/model-context";
 import { CommandPalette } from "@/components/search/command-palette";
 import { ChevronDown } from "lucide-react";
@@ -6,15 +6,15 @@ import { useEffect } from "react";
 
 export function Header() {
   const { modelUUID, setModelUUID } = useModel();
-  const { data: models } = useModelSummaries();
+  const { data: models } = useModels();
 
   useEffect(() => {
     if (!modelUUID && models && models.length > 0) {
-      setModelUUID(models[0].uuid);
+      setModelUUID(models[0].id);
     }
   }, [modelUUID, models, setModelUUID]);
 
-  const currentModel = models?.find((m) => m.uuid === modelUUID);
+  const currentModel = models?.find((m) => m.id === modelUUID);
 
   return (
     <header className="h-12 border-b border-border flex items-center px-4 gap-4 bg-background">
@@ -27,8 +27,8 @@ export function Header() {
             className="appearance-none bg-secondary text-sm font-medium px-3 py-1 pr-7 rounded-md border border-border cursor-pointer hover:bg-accent transition-colors"
           >
             {models?.map((m) => (
-              <option key={m.uuid} value={m.uuid}>
-                {m.name}
+              <option key={m.id} value={m.id}>
+                {m.attributes.name}
               </option>
             ))}
           </select>
@@ -40,12 +40,8 @@ export function Header() {
 
       {currentModel && (
         <div className="flex items-center gap-3 text-xs text-muted-foreground ml-auto">
-          <span>{currentModel.datasetCount} datasets</span>
-          <span>{currentModel.metricCount} metrics</span>
-          <span>{currentModel.relationshipCount} rel</span>
-          <span>{currentModel.glossaryCount} glossary</span>
           <span className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">
-            {currentModel.sql_dialect}
+            {currentModel.attributes.sql_dialect}
           </span>
         </div>
       )}

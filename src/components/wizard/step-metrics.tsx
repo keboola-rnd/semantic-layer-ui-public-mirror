@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, X, Pencil, Plus, Sparkles, CheckCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, X, Pencil, Plus, Sparkles, CheckCheck, Loader2 } from "lucide-react";
 
 interface MetricDraft {
   name: string;
@@ -15,17 +15,32 @@ export function StepMetrics({
   onChange,
   onNext,
   onBack,
+  aiLoading,
 }: {
   metrics: MetricDraft[];
   datasetIds: string[];
   onChange: (metrics: MetricDraft[]) => void;
   onNext: () => void;
   onBack: () => void;
+  aiLoading?: boolean;
 }) {
   const [metrics, setMetrics] = useState<MetricDraft[]>(
-    initialMetrics.map((m) => ({ ...m, accepted: m.accepted ?? false }))
+    initialMetrics.map((m) => ({ ...m, accepted: m.accepted ?? true }))
   );
   const [editing, setEditing] = useState<number | null>(null);
+
+  // Sync when new AI suggestions arrive from parent
+  useEffect(() => {
+    if (initialMetrics.length > metrics.length) {
+      const names = new Set(metrics.map((m) => m.name));
+      const newOnes = initialMetrics.filter((m) => !names.has(m.name));
+      if (newOnes.length > 0) {
+        const combined = [...metrics, ...newOnes];
+        setMetrics(combined);
+        onChange(combined);
+      }
+    }
+  }, [initialMetrics.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateAll(next: MetricDraft[]) {
     setMetrics(next);
@@ -68,6 +83,11 @@ export function StepMetrics({
             {acceptedCount} of {metrics.length} metrics accepted.
             {pendingCount > 0 && ` ${pendingCount} pending review.`}
             {" "}Edit or add your own.
+            {aiLoading && (
+              <span className="inline-flex items-center gap-1 ml-2 text-purple-600">
+                <Loader2 className="h-3 w-3 animate-spin" /> Scanning project transformations & suggesting metrics...
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
@@ -87,6 +107,16 @@ export function StepMetrics({
           </button>
         </div>
       </div>
+
+      {aiLoading && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700 flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+          <div>
+            <strong>Scanning project SQL transformations</strong> to discover existing business metrics, aggregations, and KPIs.
+            AI-suggested metrics will appear below as they are generated.
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         {metrics.map((m, i) => (
@@ -211,7 +241,7 @@ export function StepMetrics({
           Back
         </button>
         <button onClick={onNext} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
-          Continue to Enrichment
+          Continue to Relationships
         </button>
       </div>
     </div>

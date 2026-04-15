@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, Check, Database, BarChart3, GitBranch, BookOpen, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { useModel } from "@/providers/model-context";
 
 interface CreateResult {
   modelUUID: string;
@@ -17,6 +18,7 @@ export function StepReview({
   relationships,
   glossary,
   constraints,
+  onModelChange,
   onBack,
 }: {
   model: { name: string; description: string; sql_dialect: string };
@@ -25,13 +27,44 @@ export function StepReview({
   relationships: Array<Record<string, unknown>>;
   glossary: Array<Record<string, unknown>>;
   constraints?: Array<Record<string, unknown>>;
+  onModelChange?: (updates: { modelName?: string; modelDescription?: string }) => void;
   onBack: () => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [error, setError] = useState("");
+  const [editingModel, setEditingModel] = useState(false);
+  const [localName, setLocalName] = useState(model.name);
+  const [localDesc, setLocalDesc] = useState(model.description);
+  const [generatingDesc, setGeneratingDesc] = useState(false);
+
+  // Auto-generate description if empty
+  useEffect(() => {
+    if (!model.description && datasets.length > 0 && !generatingDesc) {
+      setGeneratingDesc(true);
+      fetch("/backend/generate-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelName: model.name,
+          datasets: datasets.map((d: Record<string, unknown>) => ({ name: d.name, tableId: d.tableId })),
+          metrics: metrics.map((m: Record<string, unknown>) => ({ name: m.name })),
+        }),
+      })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.description) {
+            setLocalDesc(data.description);
+            onModelChange?.({ modelDescription: data.description });
+          }
+        })
+        .catch(() => {})
+        .finally(() => setGeneratingDesc(false));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { setModelUUID } = useModel();
 
   async function handleCreate() {
     setCreating(true);
@@ -40,7 +73,10 @@ export function StepReview({
       const resp = await fetch("/backend/create-model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, datasets, metrics, relationships, glossary, constraints }),
+        body: JSON.stringify({
+          model: { ...model, name: localName, description: localDesc },
+          datasets, metrics, relationships, glossary, constraints,
+        }),
       });
       if (!resp.ok) {
         const err = await resp.json();
@@ -49,7 +85,8 @@ export function StepReview({
       const res: CreateResult = await resp.json();
       setResult(res);
       // Invalidate cache so the new model appears
-      queryClient.invalidateQueries({ queryKey: ["all-objects"] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["model-objects"] });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Creation failed");
     } finally {
@@ -58,15 +95,17 @@ export function StepReview({
   }
 
   if (result) {
+    const hasErrors = result.errors.length > 0;
+    const totalCreated = result.created.datasets + result.created.metrics + result.created.relationships + result.created.glossary + ((result.created as Record<string, number>).constraints || 0);
     return (
       <div className="max-w-lg mx-auto text-center py-12 space-y-6">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-          <Check className="h-8 w-8 text-green-600" />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${hasErrors ? "bg-amber-100" : "bg-green-100"}`}>
+          <Check className={`h-8 w-8 ${hasErrors ? "text-amber-600" : "text-green-600"}`} />
         </div>
         <div>
-          <h3 className="text-xl font-semibold">Model Created!</h3>
+          <h3 className="text-xl font-semibold">{hasErrors ? "Model Created with Warnings" : "Model Created!"}</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            <strong>{result.modelName}</strong> has been created with:
+            <strong>{result.modelName}</strong> — {totalCreated} objects created{hasErrors ? `, ${result.errors.length} failed` : ""}.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -95,10 +134,8 @@ export function StepReview({
         </button>
         <button
           onClick={() => {
-            // Select the newly created model and go to dashboard
-            localStorage.setItem("selected-model-uuid", result.modelUUID);
+            setModelUUID(result.modelUUID);
             navigate("/");
-            window.location.reload();
           }}
           className="px-6 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
         >
@@ -126,11 +163,51 @@ export function StepReview({
         </p>
       </div>
 
-      {/* Model info */}
-      <div className="border border-border rounded-lg p-4 space-y-2">
-        <h4 className="font-medium">{model.name}</h4>
-        <p className="text-sm text-muted-foreground">{model.description || "No description"}</p>
-        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{model.sql_dialect}</span>
+      {/* Model info (editable) */}
+      <div className="border border-border rounded-lg p-4 space-y-3">
+        {editingModel ? (
+          <>
+            <div>
+              <label className="text-xs font-medium block mb-1">Model Name</label>
+              <input
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm border border-input rounded-md bg-background"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1">Description</label>
+              <textarea
+                value={localDesc}
+                onChange={(e) => setLocalDesc(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-1.5 text-sm border border-input rounded-md bg-background"
+              />
+            </div>
+            <button
+              onClick={() => {
+                onModelChange?.({ modelName: localName, modelDescription: localDesc });
+                setEditingModel(false);
+              }}
+              className="text-xs text-primary hover:underline"
+            >
+              Done editing
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">{localName}</h4>
+              <button onClick={() => setEditingModel(true)} className="text-xs text-muted-foreground hover:text-foreground">
+                Edit
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {generatingDesc ? "Generating description..." : (localDesc || "No description")}
+            </p>
+            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{model.sql_dialect}</span>
+          </>
+        )}
       </div>
 
       {/* Stats */}

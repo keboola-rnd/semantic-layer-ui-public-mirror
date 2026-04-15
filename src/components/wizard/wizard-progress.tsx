@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 
 const STEPS = [
-  { label: "Project", description: "Discover tables" },
-  { label: "Import", description: "Choose source" },
+  { label: "Tables", description: "Select tables" },
+  { label: "Source", description: "Choose source" },
   { label: "Datasets", description: "Review fields" },
   { label: "Metrics", description: "Review metrics" },
   { label: "Joins", description: "Relationships" },

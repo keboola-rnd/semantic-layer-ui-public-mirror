@@ -4,7 +4,7 @@
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 
-async function callClaude(prompt, maxTokens = 8192) {
+export async function callClaude(prompt, maxTokens = 8192) {
   const apiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set — add it as a data app secret");
 
@@ -80,7 +80,7 @@ export async function testApiKey() {
   }
 }
 
-function parseJSON(text) {
+export function parseJSON(text) {
   let s = text.trim();
   // Strip markdown fences
   const match = s.match(/```(?:json)?\s*([\s\S]*?)```/);

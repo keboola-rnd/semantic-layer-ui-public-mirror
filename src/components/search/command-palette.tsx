@@ -1,7 +1,7 @@
 import { Command } from "cmdk";
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router";
-import { useAllObjects } from "@/hooks/use-all-objects";
+import { useModelObjects } from "@/hooks/use-all-objects";
 import { useModel } from "@/providers/model-context";
 import {
   Database,
@@ -39,8 +39,8 @@ const TYPE_COLORS = {
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { data } = useAllObjects();
   const { modelUUID } = useModel();
+  const { data } = useModelObjects(modelUUID);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -58,7 +58,6 @@ export function CommandPalette() {
     const items: SearchResult[] = [];
 
     for (const d of data.datasets) {
-      if (modelUUID && d.attributes.modelUUID !== modelUUID) continue;
       items.push({
         id: d.id,
         label: d.attributes.name,
@@ -79,7 +78,6 @@ export function CommandPalette() {
     }
 
     for (const m of data.metrics) {
-      if (modelUUID && m.attributes.modelUUID !== modelUUID) continue;
       items.push({
         id: m.id,
         label: m.attributes.name,
@@ -90,7 +88,6 @@ export function CommandPalette() {
     }
 
     for (const r of data.relationships) {
-      if (modelUUID && r.attributes.modelUUID !== modelUUID) continue;
       items.push({
         id: r.id,
         label: r.attributes.name || `${r.attributes.from} -> ${r.attributes.to}`,
@@ -101,7 +98,6 @@ export function CommandPalette() {
     }
 
     for (const g of data.glossary) {
-      if (modelUUID && g.attributes.modelUUID !== modelUUID) continue;
       items.push({
         id: g.id,
         label: g.attributes.term,
@@ -112,7 +108,6 @@ export function CommandPalette() {
     }
 
     for (const c of data.constraints) {
-      if (modelUUID && c.attributes.modelUUID !== modelUUID) continue;
       items.push({
         id: c.id,
         label: c.attributes.displayName || c.attributes.name,

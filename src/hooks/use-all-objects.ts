@@ -19,8 +19,37 @@ export interface AllObjects {
   constraints: MetastoreObject<SemanticConstraint>[];
 }
 
-/** Fetch ALL semantic objects once — all types in parallel.
- *  This single query populates everything the app needs. */
+/** Fetch only models — lightweight, used for model selector/dashboard */
+export function useModelsOnly() {
+  return useQuery({
+    queryKey: ["models"],
+    queryFn: () => listObjects<SemanticModel>("semantic-model"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Fetch all child objects for a specific model */
+export function useModelObjects(modelUUID: string) {
+  return useQuery({
+    queryKey: ["model-objects", modelUUID],
+    queryFn: async () => {
+      const [datasets, metrics, relationships, glossary, constraints] =
+        await Promise.all([
+          listObjects<SemanticDataset>("semantic-dataset", modelUUID),
+          listObjects<SemanticMetric>("semantic-metric", modelUUID),
+          listObjects<SemanticRelationship>("semantic-relationship", modelUUID),
+          listObjects<SemanticGlossary>("semantic-glossary", modelUUID),
+          listObjects<SemanticConstraint>("semantic-constraint", modelUUID),
+        ]);
+      return { datasets, metrics, relationships, glossary, constraints };
+    },
+    enabled: !!modelUUID,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Legacy: Fetch ALL semantic objects — still used by some pages.
+ *  Prefer useModelsOnly + useModelObjects for better performance. */
 export function useAllObjects() {
   return useQuery({
     queryKey: ["all-objects"],

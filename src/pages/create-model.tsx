@@ -68,10 +68,14 @@ export function CreateModelPage() {
   const [skeletonError, setSkeletonError] = useState("");
   const [rawTables, setRawTables] = useState<Record<string, unknown> | null>(null);
 
-  // AI streaming state
+  // AI streaming state (dataset enhancement only)
   const [aiJobId, setAiJobId] = useState<string | null>(null);
   const [aiProgress, setAiProgress] = useState({ completed: 0, total: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Per-step AI suggestion tracking — use ref for synchronous reads
+  const aiSuggestedRef = useRef(new Set<number>());
+  const [aiLoadingStep, setAiLoadingStep] = useState<number | null>(null);
 
   // Import source
   const [importSource, setImportSource] = useState<ImportSource | null>(null);
@@ -87,6 +91,115 @@ export function CreateModelPage() {
   })();
 
   const datasetIds = datasets.map((d) => d.tableId);
+
+  // ── Step-by-step AI suggestions ──
+  async function triggerStepAI(targetStep: number) {
+    if (aiSuggestedRef.current.has(targetStep)) return;
+    aiSuggestedRef.current.add(targetStep);
+    setAiLoadingStep(targetStep);
+    console.log(`[wizard] Triggering AI for step ${targetStep}`);
+
+    try {
+      if (targetStep === 3) {
+        // Metrics step: suggest metrics from datasets + SQL transformations
+        const resp = await fetch("/backend/suggest-metrics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            datasets: datasets.map((d) => ({ tableId: d.tableId, name: d.name, fields: d.fields })),
+            projectName: projectData.introspection?.projectName || "",
+            sqlDialect: projectData.sqlDialect,
+            storageUrl: projectData.introspection?.storageUrl || "",
+          }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setMetrics((prev) => {
+            const names = new Set(prev.map((m) => m.name));
+            const newOnes = (data.metrics || [])
+              .filter((m: MetricDraft) => !names.has(m.name))
+              .map((m: MetricDraft) => ({ ...m, accepted: true }));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
+        }
+      } else if (targetStep === 4) {
+        // Relationships step
+        const resp = await fetch("/backend/suggest-relationships", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ datasets, sqlDialect: projectData.sqlDialect }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setRelationships((prev) => {
+            const keys = new Set(prev.map((r) => `${r.from}→${r.to}`));
+            const newOnes = (data.relationships || [])
+              .filter((r: RelDraft) => !keys.has(`${r.from}→${r.to}`))
+              .map((r: RelDraft) => ({ ...r, accepted: true }));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
+        }
+      } else if (targetStep === 5) {
+        // Glossary step
+        console.log(`[wizard] Requesting glossary with ${datasets.length} datasets, ${metrics.filter(m => m.accepted).length} metrics`);
+        const resp = await fetch("/backend/suggest-glossary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            datasets: datasets.map((d) => ({ tableId: d.tableId, name: d.name, description: d.description })),
+            metrics: metrics.filter((m) => m.accepted).map((m) => ({ name: m.name, description: m.description })),
+            projectName: projectData.introspection?.projectName || "",
+          }),
+        });
+        const glossaryData = await resp.json();
+        console.log(`[wizard] Glossary response:`, resp.status, `${glossaryData.glossary?.length || 0} items`);
+        if (resp.ok && glossaryData.glossary?.length) {
+          setGlossary((prev) => {
+            const terms = new Set(prev.map((g) => g.term));
+            const newOnes = (glossaryData.glossary || [])
+              .filter((g: GlossaryDraft) => !terms.has(g.term))
+              .map((g: GlossaryDraft) => ({ ...g, accepted: true }));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
+        }
+      } else if (targetStep === 6) {
+        // Constraints step
+        const acceptedMetrics = metrics.filter((m) => m.accepted);
+        console.log(`[wizard] Requesting constraints with ${acceptedMetrics.length} metrics`);
+        const resp = await fetch("/backend/suggest-constraints", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            metrics: acceptedMetrics.map((m) => ({ name: m.name, sql: m.sql, description: m.description })),
+            datasets: datasets.map((d) => ({ tableId: d.tableId, name: d.name })),
+          }),
+        });
+        const constraintData = await resp.json();
+        console.log(`[wizard] Constraints response:`, resp.status, `${constraintData.constraints?.length || 0} items`);
+        if (resp.ok && constraintData.constraints?.length) {
+          setConstraints((prev) => {
+            const names = new Set(prev.map((c) => c.name));
+            const newOnes = (constraintData.constraints || [])
+              .filter((c: ConstraintDraft) => !names.has(c.name));
+            return newOnes.length ? [...prev, ...newOnes] : prev;
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`[step-ai] Step ${targetStep} failed:`, err);
+    } finally {
+      setAiLoadingStep(null);
+    }
+  }
+
+  // Trigger AI when entering a step
+  function goToStep(targetStep: number) {
+    setStep(targetStep);
+    // Always trigger AI suggestions for these steps (ref prevents duplicates)
+    if ([3, 4, 5, 6].includes(targetStep)) {
+      triggerStepAI(targetStep);
+    }
+  }
 
   // ── Step 1 → 2: Auto-build skeleton ──
   async function handleProjectNext() {
@@ -105,9 +218,9 @@ export function CreateModelPage() {
       const data = await resp.json();
 
       setDatasets(data.datasets || []);
-      // Don't use heuristic metrics — too noisy. Let AI suggest metrics instead.
-      setMetrics([]);
-      setRelationships((data.relationships || []).map((r: Record<string, string>) => ({ ...r, accepted: false })));
+      // Include heuristic metrics as accepted by default (user can reject)
+      setMetrics((data.metrics || []).map((m: Record<string, string>) => ({ ...m, accepted: true })));
+      setRelationships((data.relationships || []).map((r: Record<string, string>) => ({ ...r, accepted: true })));
       setRawTables(data.tables || null);
       setStep(1);
     } catch (err) {
@@ -122,23 +235,22 @@ export function CreateModelPage() {
     setImportSource(source);
 
     if (source === "file" && data) {
-      // Merge file import results
       const result = data as Record<string, unknown[]>;
       if (result.suggestedMetrics) {
         setMetrics((prev) => [
           ...prev,
-          ...(result.suggestedMetrics as MetricDraft[]).map((m) => ({ ...m, accepted: false })),
+          ...(result.suggestedMetrics as MetricDraft[]).map((m) => ({ ...m, accepted: true })),
         ]);
       }
       if (result.suggestedGlossary) {
         setGlossary((prev) => [
           ...prev,
-          ...(result.suggestedGlossary as GlossaryDraft[]).map((g) => ({ ...g, accepted: false })),
+          ...(result.suggestedGlossary as GlossaryDraft[]).map((g) => ({ ...g, accepted: true })),
         ]);
       }
     }
 
-    // Start AI streaming if "from scratch"
+    // Start AI dataset enhancement if "from scratch"
     if (source === "scratch" && rawTables) {
       startAiClassification(rawTables);
     }
@@ -146,7 +258,7 @@ export function CreateModelPage() {
     setStep(2);
   }
 
-  // ── AI streaming classification ──
+  // ── AI streaming classification (datasets only) ──
   async function startAiClassification(tables: Record<string, unknown>) {
     try {
       const resp = await fetch("/backend/classify-stream", {
@@ -167,7 +279,7 @@ export function CreateModelPage() {
     }
   }
 
-  // Poll for AI results
+  // Poll for AI dataset enhancement results
   useEffect(() => {
     if (!aiJobId) return;
 
@@ -191,24 +303,6 @@ export function CreateModelPage() {
             }
             return updated;
           });
-
-          // Merge new metrics/relationships/glossary from AI (deduplicated)
-          setMetrics((prev) => {
-            const names = new Set(prev.map((m) => m.name));
-            const newOnes = job.completed
-              .flatMap((item: Record<string, unknown[]>) => (item.metrics || []) as MetricDraft[])
-              .filter((m: MetricDraft) => !names.has(m.name))
-              .map((m: MetricDraft) => ({ ...m, accepted: false }));
-            return newOnes.length ? [...prev, ...newOnes] : prev;
-          });
-          setGlossary((prev) => {
-            const terms = new Set(prev.map((g) => g.term));
-            const newOnes = job.completed
-              .flatMap((item: Record<string, unknown[]>) => (item.glossary || []) as GlossaryDraft[])
-              .filter((g: GlossaryDraft) => !terms.has(g.term))
-              .map((g: GlossaryDraft) => ({ ...g, accepted: false }));
-            return newOnes.length ? [...prev, ...newOnes] : prev;
-          });
         }
 
         if (job.status === "done") {
@@ -216,10 +310,10 @@ export function CreateModelPage() {
           setAiJobId(null);
         }
       } catch { /* ignore poll errors */ }
-    }, 2500);
+    }, 1500);
 
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [aiJobId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aiJobId]);
 
   // ── Build final objects ──
   function getFinalObjects() {
@@ -258,7 +352,7 @@ export function CreateModelPage() {
           datasets={datasets}
           onDatasetsChange={setDatasets}
           aiProgress={aiJobId ? aiProgress : null}
-          onNext={() => setStep(3)}
+          onNext={() => goToStep(3)}
           onBack={() => setStep(1)}
         />
       )}
@@ -268,8 +362,9 @@ export function CreateModelPage() {
           metrics={metrics}
           datasetIds={datasetIds}
           onChange={setMetrics}
-          onNext={() => setStep(4)}
+          onNext={() => goToStep(4)}
           onBack={() => setStep(2)}
+          aiLoading={aiLoadingStep === 3}
         />
       )}
 
@@ -278,8 +373,8 @@ export function CreateModelPage() {
           relationships={relationships}
           datasetIds={datasetIds}
           onChange={setRelationships}
-          onNext={() => setStep(5)}
-          onBack={() => setStep(3)}
+          onNext={() => goToStep(5)}
+          onBack={() => goToStep(3)}
         />
       )}
 
@@ -288,8 +383,9 @@ export function CreateModelPage() {
           glossary={glossary}
           datasetIds={datasetIds}
           onChange={setGlossary}
-          onNext={() => setStep(6)}
-          onBack={() => setStep(4)}
+          onNext={() => goToStep(6)}
+          onBack={() => goToStep(4)}
+          aiLoading={aiLoadingStep === 5}
         />
       )}
 
@@ -299,7 +395,8 @@ export function CreateModelPage() {
           metricNames={metrics.filter((m) => m.accepted).map((m) => m.name)}
           onChange={setConstraints}
           onNext={() => setStep(7)}
-          onBack={() => setStep(5)}
+          onBack={() => goToStep(5)}
+          aiLoading={aiLoadingStep === 6}
         />
       )}
 
@@ -317,6 +414,7 @@ export function CreateModelPage() {
             relationships={final.relationships}
             glossary={final.glossary}
             constraints={final.constraints}
+            onModelChange={(updates) => setProjectData((prev) => ({ ...prev, ...updates }))}
             onBack={() => setStep(6)}
           />
         );
