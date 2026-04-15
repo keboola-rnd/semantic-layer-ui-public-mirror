@@ -3,8 +3,8 @@ import { useModels, useModelDetail } from "@/hooks/use-models";
 import { useModel } from "@/providers/model-context";
 import { deleteObject } from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Database, BarChart3, GitBranch, BookOpen, ShieldCheck, Trash2 } from "lucide-react";
-import { Link } from "react-router";
+import { Database, BarChart3, GitBranch, BookOpen, ShieldCheck, Trash2, PlusCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router";
 
 function DeleteModelDialog({
   modelName,
@@ -111,6 +111,7 @@ export function DashboardPage() {
   const { modelUUID, setModelUUID } = useModel();
   const { data: models, isLoading, error } = useModels();
   const [deleteTarget, setDeleteTarget] = useState<{ name: string; uuid: string } | null>(null);
+  const navigate = useNavigate();
 
   const model = models?.find((m) => m.id === modelUUID);
 
@@ -141,9 +142,34 @@ export function DashboardPage() {
   }
 
   if (!model) {
+    if (models?.length) {
+      return (
+        <div className="text-center py-20 text-muted-foreground">
+          <p>Loading model...</p>
+        </div>
+      );
+    }
     return (
-      <div className="text-center py-20 text-muted-foreground">
-        <p>{models?.length ? "Loading model..." : "No models found. Create one to get started."}</p>
+      <div className="max-w-lg mx-auto text-center py-20 space-y-6">
+        <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
+          <Database className="h-10 w-10 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold">Build Your Semantic Layer</h2>
+          <p className="text-muted-foreground mt-2 max-w-md mx-auto">
+            Define how your data should be understood — datasets, metrics, relationships, and business terms — so AI agents can write accurate SQL.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate("/create-model")}
+          className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <PlusCircle className="h-4 w-4" />
+          Create Your First Model
+        </button>
+        <p className="text-xs text-muted-foreground">
+          The wizard will scan your Keboola project and use AI to classify your tables, suggest metrics, and build a complete semantic model.
+        </p>
       </div>
     );
   }
