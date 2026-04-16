@@ -174,7 +174,8 @@ export async function fetchTransformations(options = {}) {
   for (const componentId of allIds) {
     let configs;
     try {
-      configs = await storageGet(`/components/${componentId}/configs`, token, storageUrl);
+      // Include rows — row-based transformations store SQL in rows, not top-level config
+      configs = await storageGet(`/components/${componentId}/configs?include=rows`, token, storageUrl);
     } catch (err) {
       // 404 = component doesn't exist for this project (expected), skip silently
       if (err.message.includes("404")) {
@@ -191,13 +192,13 @@ export async function fetchTransformations(options = {}) {
     }
 
     componentsSeen.push(componentId);
-    console.log(`[introspect] ${componentId}: ${configs.length} config(s)`);
+    console.log(`[introspect] ${componentId}: ${configs.length} config(s), rows included: ${configs.some(c => c.rows?.length > 0)}`);
 
     for (const config of configs) {
       const configId = config.id || "";
       const configName = config.name || "";
       const configDescription = config.description || "";
-      const conf = config.configuration || {};
+      let conf = config.configuration || {};
 
       // --- Step 3: Extract SQL queries ---
       const queries = [];
@@ -261,7 +262,55 @@ export async function fetchTransformations(options = {}) {
       }));
 
       // --- Step 5: Handle row-based transformations ---
-      const rows = config.rows || [];
+      // If rows aren't in the list response, fetch them individually
+      let rows = config.rows || [];
+      if (rows.length === 0 && queries.length === 0) {
+        try {
+          const fullConfig = await storageGet(
+            `/components/${componentId}/configs/${configId}`,
+            token,
+            storageUrl
+          );
+          rows = fullConfig.rows || [];
+          // Also grab any top-level SQL we may have missed
+          const fullConf = fullConfig.configuration || {};
+          const fullParams = fullConf.parameters || {};
+          for (const block of fullParams.blocks || []) {
+            for (const code of block.codes || []) {
+              for (const sqlLine of code.script || []) {
+                if (typeof sqlLine === "string" && sqlLine.trim()) {
+                  queries.push({
+                    sql: sqlLine,
+                    blockName: block.name || "",
+                    codeName: code.name || "",
+                    source: "config-detail",
+                  });
+                }
+              }
+            }
+          }
+          // Also check full config for input/output mappings
+          const fullStorage = fullConf.storage || {};
+          for (const t of (fullStorage.input || {}).tables || []) {
+            if (t.source && !inputMappings.some((m) => m.source === t.source)) {
+              inputMappings.push({
+                source: t.source || "",
+                destination: t.destination || "",
+                columns: t.columns || [],
+                whereColumn: t.where_column || "",
+                whereValues: t.where_values || [],
+                whereOperator: t.where_operator || "",
+              });
+            }
+          }
+          if (rows.length > 0) {
+            console.log(`[introspect]   Config ${configName}: fetched ${rows.length} rows individually`);
+          }
+        } catch (err) {
+          console.warn(`[introspect]   Could not fetch config detail for ${configId}: ${err.message}`);
+        }
+      }
+
       for (const row of rows) {
         const rowId = row.id || "";
         const rowName = row.name || "";

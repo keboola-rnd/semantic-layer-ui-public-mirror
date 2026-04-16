@@ -86,6 +86,38 @@ app.post("/backend/introspect/tables", async (req, res) => {
   }
 });
 
+// ─── Backend: AI-assisted table selection ───────────────────────────────────
+
+app.post("/backend/suggest-tables", async (req, res) => {
+  try {
+    const { description, buckets } = req.body;
+    if (!description || !buckets) {
+      return res.status(400).json({ error: "description and buckets required" });
+    }
+
+    const prompt = `You are helping a user select tables from a Keboola project for a semantic layer model.
+
+The user describes what they want to model:
+"${description}"
+
+Here are the available buckets and tables:
+${JSON.stringify(buckets, null, 2)}
+
+Select the tables that are most relevant to the user's description. Return ONLY a JSON object:
+{"tableIds":["in.c-bucket.table1","in.c-bucket.table2"],"reasoning":"Brief explanation of why these tables were selected"}
+
+Be generous — include tables that are likely relevant even if not explicitly mentioned. Include lookup/dimension tables that would be needed for joins.`;
+
+    const text = await callClaude(prompt, 2048);
+    const result = parseJSON(text);
+    console.log(`[suggest-tables] AI selected ${result.tableIds?.length || 0} tables for: "${description.substring(0, 60)}..."`);
+    res.json({ tableIds: result.tableIds || [], reasoning: result.reasoning || "" });
+  } catch (err) {
+    console.error("[suggest-tables] Error:", err.message);
+    res.status(500).json({ error: err.message, tableIds: [] });
+  }
+});
+
 // ─── Backend: Skeleton (heuristic, instant) ──────────────────────────────────
 
 app.post("/backend/skeleton", async (req, res) => {
@@ -147,7 +179,8 @@ app.post("/backend/classify-stream", async (req, res) => {
 
       const prompt = `${ENHANCE_PROMPT}\n\nProject: ${projectName || "Unknown"}, SQL: ${sqlDialect || "Snowflake"}\n\nTable:\n${JSON.stringify(tableSchema)}`;
       // Scale max_tokens based on column count — large tables need more output tokens
-      const maxTokens = Math.min(8192, Math.max(2048, tableSchema.columns.length * 80));
+      // Minimum 2048 + 60 tokens per column, capped at 8192
+      const maxTokens = Math.min(8192, Math.max(2048, 1024 + tableSchema.columns.length * 60));
       const text = await callClaude(prompt, maxTokens);
       const dataset = parseJSON(text);
 
@@ -188,6 +221,33 @@ app.get("/backend/classify-stream/:jobId", (req, res) => {
   const job = streamJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: "Job not found" });
   res.json(job);
+});
+
+// ─── Backend: Transformation diagnostic endpoint ───────────────────────────
+
+app.get("/backend/debug-transformations", async (req, res) => {
+  try {
+    console.log("[debug-tx] Fetching transformations...");
+    const txResult = await fetchTransformations({ token: KBC_TOKEN });
+    const summary = txResult.transformations.map((t) => ({
+      component: t.componentId,
+      config: t.configName,
+      sqlStatements: t.totalSqlStatements,
+      inputMappings: t.totalInputMappings,
+      outputMappings: t.totalOutputMappings,
+      firstQuery: t.queries[0]?.sql?.substring(0, 200) || "(no SQL)",
+      querySource: t.queries[0]?.source || "(none)",
+    }));
+    res.json({
+      ...txResult.summary,
+      componentsSeen: txResult.componentsSeen,
+      errors: txResult.errors,
+      transformations: summary,
+    });
+  } catch (err) {
+    console.error("[debug-tx] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Backend: Step-by-step AI suggestions ───────────────────────────────────

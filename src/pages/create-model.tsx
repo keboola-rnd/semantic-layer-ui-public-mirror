@@ -80,15 +80,8 @@ export function CreateModelPage() {
   // Import source
   const [importSource, setImportSource] = useState<ImportSource | null>(null);
 
-  // Compute selected table IDs
-  const selectedTableIds = (() => {
-    if (!projectData.introspection) return [];
-    const ids: string[] = [];
-    for (const bid of projectData.selectedBuckets) {
-      for (const t of projectData.introspection.tablesByBucket[bid] || []) ids.push(t.id);
-    }
-    return ids;
-  })();
+  // Selected table IDs — now stored directly on projectData
+  const selectedTableIds = projectData.selectedTableIds;
 
   const datasetIds = datasets.map((d) => d.tableId);
 
